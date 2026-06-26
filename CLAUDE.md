@@ -58,9 +58,10 @@ Stack: Swift 6 (strict concurrency), SwiftUI, Clean Architecture, SwiftData. It 
 ## File map
 ```
 SPEC.md       — technical truth (architecture, constraints, signals, data model)
-PLAN.md       — vertical slices 0–10
+PLAN.md       — vertical slices 0–13
 PROGRESS.md   — status table, decision log, changelog, live risks
 CLAUDE.md     — this file
+design_handoff_latch_profiler/ — authoritative UI/visual spec (hi-fi); see SPEC.md §8
 .claude/skills/ — installed, auto-triggerable skills (see table below)
   clean-code/ tdd/ refactoring-fowler/ macos-apple-docs/ ios-apple-docs/
   apple-process-metrics/ instruments-xctrace/ code-signing-entitlements/
