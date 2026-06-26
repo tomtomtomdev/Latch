@@ -9,6 +9,7 @@ import LatchData
 struct VitalsView: View {
     let target: Target
     @State private var model: VitalsModel
+    @State private var showingSettings = false
 
     init(target: Target) {
         self.target = target
@@ -19,17 +20,58 @@ struct VitalsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
+                signalPills
                 if let message = model.errorMessage {
                     Label(message, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.orange)
                 }
+                alertBanners
                 cpuChart
                 memoryChart
             }
             .padding()
         }
         .navigationTitle(target.displayName)
+        .toolbar {
+            Button("Thresholds", systemImage: "slider.horizontal.3") { showingSettings = true }
+                .popover(isPresented: $showingSettings, arrowEdge: .bottom) {
+                    ThresholdSettingsView(model: model).frame(width: 320)
+                }
+        }
         .task(id: target.id) { await pollLoop() }
+    }
+
+    private var signalPills: some View {
+        HStack(spacing: 8) {
+            ForEach(SignalKind.allCases, id: \.self) { signal in
+                SignalPill(title: signal.title, status: status(for: signal))
+            }
+        }
+    }
+
+    private func status(for signal: SignalKind) -> SignalStatus {
+        guard signal.hasLiveIndicator else { return .unavailable }
+        return model.alerts.contains { $0.signal == signal } ? .alerting : .ok
+    }
+
+    @ViewBuilder private var alertBanners: some View {
+        ForEach(model.alerts) { alert in
+            Label(alertMessage(alert), systemImage: "exclamationmark.octagon.fill")
+                .foregroundStyle(.red)
+                .font(.callout.weight(.medium))
+        }
+    }
+
+    private func alertMessage(_ alert: LatchDomain.Alert) -> String {
+        switch alert.signal {
+        case .cpuSpike:
+            return String(format: "CPU spike — %.0f%% of one core, sustained", alert.sample.cpuPercent)
+        case .memoryLeak:
+            let mb = alert.sample.physFootprintMegabytes
+            return String(format: "Possible leak — footprint rising (%.1f MB)", mb)
+        default:
+            return "\(alert.signal.title) threshold breached"
+        }
     }
 
     private func pollLoop() async {
@@ -82,5 +124,90 @@ struct VitalsView: View {
 
     private var indexedSamples: [(index: Int, sample: MetricSample)] {
         Array(model.samples.enumerated()).map { (index: $0.offset, sample: $0.element) }
+    }
+}
+
+/// A compact status chip for one signal: green when monitored and within limits, red on
+/// an active alert, grey when the signal has no live indicator yet. (SPEC §1)
+private struct SignalPill: View {
+    let title: String
+    let status: SignalStatus
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle().fill(status.color).frame(width: 7, height: 7)
+            Text(title).font(.caption)
+            Text(status.label).font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.quaternary, in: Capsule())
+    }
+}
+
+/// Per-target threshold tuning for the live signals. Edits route through
+/// `VitalsModel.updateThreshold`, which re-evaluates the current window immediately. The
+/// defaults are starting points, not science (SPEC §3.3). (PLAN slice 3)
+private struct ThresholdSettingsView: View {
+    @Bindable var model: VitalsModel
+
+    var body: some View {
+        Form {
+            Section("Alert thresholds") {
+                ForEach(model.thresholds) { threshold in
+                    if threshold.signal.hasLiveIndicator {
+                        thresholdStepper(threshold)
+                    }
+                }
+            }
+            Text("Defaults are starting points — tune them to this target.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+    }
+
+    private func thresholdStepper(_ threshold: Threshold) -> some View {
+        let binding = Binding(
+            get: { threshold.value },
+            set: { model.updateThreshold(threshold.signal, value: $0) }
+        )
+        return Stepper(value: binding, in: range(for: threshold.signal), step: step(for: threshold.signal)) {
+            HStack {
+                Text(label(for: threshold.signal))
+                Spacer()
+                Text(String(format: "%.0f %@", threshold.value, unit(for: threshold.signal)))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func label(for signal: SignalKind) -> String {
+        switch signal {
+        case .cpuSpike: "CPU spike above"
+        case .memoryLeak: "Footprint rising over"
+        default: signal.title
+        }
+    }
+
+    private func unit(for signal: SignalKind) -> String {
+        switch signal {
+        case .cpuSpike: "% core"
+        case .memoryLeak: "MB/min"
+        default: ""
+        }
+    }
+
+    private func range(for signal: SignalKind) -> ClosedRange<Double> {
+        switch signal {
+        case .cpuSpike: 10...400
+        case .memoryLeak: 1...100
+        default: 0...100
+        }
+    }
+
+    private func step(for signal: SignalKind) -> Double {
+        signal == .cpuSpike ? 5 : 1
     }
 }

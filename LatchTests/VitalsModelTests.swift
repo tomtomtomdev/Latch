@@ -66,4 +66,45 @@ struct VitalsModelTests {
         #expect(model.errorMessage != nil)
         #expect(model.samples.isEmpty)
     }
+
+    // Readings whose CPU time grows by `percent`% of a wall-second each tick.
+    private func cpuReadings(percent: Double, ticks: Int) -> [VitalsReading] {
+        (0...ticks).map { i in
+            reading(cpu: UInt64(Double(i) * percent / 100 * 1_000_000_000), wall: UInt64(i) * 1_000_000_000)
+        }
+    }
+
+    private let cpuThreshold = Threshold(signal: .cpuSpike, comparator: .greaterThan, value: 80, window: 3)
+
+    // Sustained high CPU across the threshold window raises an active alert. (PLAN slice 3)
+    @Test func poll_raisesAlertWhenCPUSustainedAboveThreshold() {
+        let source = FakeMetricsSource(readings: cpuReadings(percent: 90, ticks: 4))
+        let model = VitalsModel(source: source, pid: 1, thresholds: [cpuThreshold])
+
+        for _ in 0..<5 { model.poll() }
+
+        #expect(model.alerts.map(\.signal) == [.cpuSpike])
+    }
+
+    // CPU comfortably below the threshold raises nothing.
+    @Test func poll_noAlertWhenBelowThreshold() {
+        let source = FakeMetricsSource(readings: cpuReadings(percent: 50, ticks: 4))
+        let model = VitalsModel(source: source, pid: 1, thresholds: [cpuThreshold])
+
+        for _ in 0..<5 { model.poll() }
+
+        #expect(model.alerts.isEmpty)
+    }
+
+    // Tuning the threshold above the live load clears the breach — per-target override. (SPEC §3.3)
+    @Test func updateThreshold_retunesAlerting() {
+        let source = FakeMetricsSource(readings: cpuReadings(percent: 90, ticks: 4))
+        let model = VitalsModel(source: source, pid: 1, thresholds: [cpuThreshold])
+        for _ in 0..<5 { model.poll() }
+        #expect(!model.alerts.isEmpty)
+
+        model.updateThreshold(.cpuSpike, value: 95)
+
+        #expect(model.alerts.isEmpty)
+    }
 }
