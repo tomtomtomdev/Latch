@@ -12,7 +12,7 @@ to the decision log when a non-obvious choice is made. Never delete history.
 | 2 | Live vitals (mem + CPU) | ✅ Done | §3.3, §4 | `MetricsSource`/`VitalsReading`/`MetricSample` in Domain (pure CPU% delta math, % of one core); `LibprocMetricsSource` via `proc_pid_rusage(V6)`+`proc_pidinfo`; `VitalsModel` 1 Hz ring-buffer poller + Swift Charts dashboard |
 | 3 | Thresholds & alerting | ✅ Done | §3.3, §4 | Domain `Comparator`/`Threshold`(+`defaults`)/`Alert`/`AlertSeverity` + pure `EvaluateThresholds` (sustained CPU breach + least-squares footprint-rise leak hint); `VitalsModel` recomputes active alerts per tick + per-target `updateThreshold`; UI signal pills (honest `unavailable` for non-live signals), alert banners, threshold-tuning popover |
 | 4 | Network I/O | ✅ Done | §3.2, §3.3 | Domain `NetworkReading`(raw cumulative bytes)+`NetworkRate`(pure `derive` rate math, guards zero-interval/rewind)+`NetworkSource` port; `MetricSample` grew net rate fields + `withNetwork` + `networkMegabytesPerSecond` (decimal MB); `.networkIO` default (>5 MB/s, 5 s) via generalized sustained eval; `NettopMetricsSource` parses `nettop -P -L 1 -J …` CSV over `CommandRunner` (committed fixtures); `VitalsModel.poll()` now async, composes best-effort network rate onto each sample; net pill live + throughput chart |
-| 5 | Energy / battery | ⬜ Not started | §1, §5 | needs root path |
+| 5 | Energy / battery | ✅ Done | §1, §5 | Domain `VitalsReading.energyNanojoules` (`ri_energy_nj`, verified) + `MetricSample.energyWatts` (pure Δnj/Δns power estimate via extracted `rate`); `.battery` default (>5 W sustained 5 s) through generalized `sustainedAlert`; `EnergySource` port + `EnergyMeasurementError`; `PowermetricsSource` parses `powermetrics --samplers tasks --show-process-energy -f plist` (⚠️ synthesized fixture, needs live-root validation); `VitalsModel.measureEnergy()` on-demand measured read degrades to estimate; UI energy section (estimate W + Measure button + measured impact + honest degrade label), battery pill live, threshold row |
 | 6 | Leaks (attach) | ⬜ Not started | §1 | MallocStackLogging caveat |
 | 7 | Zombies (relaunch) | ⬜ Not started | §1 | relaunch-only |
 | 8 | Hitches & hangs | ⬜ Not started | §3.3 | — |
@@ -24,7 +24,9 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
 ## Known constraints / risks (live)
 - `task_for_pid` needs debugger entitlement + same-UID; system procs out of scope. (SPEC §1)
 - Zombies cannot be enabled on a running process — relaunch required. (SPEC §1, Slice 7)
-- `powermetrics` needs root; energy degrades to estimate otherwise. (SPEC §1, Slice 5)
+- `powermetrics` needs root; energy degrades to the `ri_energy_nj` estimate otherwise. (SPEC §1, Slice 5)
+- ⚠️ **The `powermetrics` plist fixture is synthesized from `man powermetrics`, not captured live** (capturing needs root; Latch never runs silent `sudo`). The `tasks`/`energy_impact` plist shape is an assumption that MUST be validated against a real privileged run in the manual integration smoke before the measured-energy path is trusted in production. (SPEC §6, §7; Slice 5)
+- No privileged escalation path yet: `PowermetricsSource` runs through the plain `ProcessCommandRunner`, so measured energy only works if Latch itself runs as root; otherwise it degrades. An `SMAppService`/authorization helper is deferred. (SPEC §5, Slice 5)
 - iOS limited to development-signed apps on connected devices. (SPEC §1, Slice 9)
 - Apple APIs/man pages must be verified against current docs, not memory. (SPEC §7)
 
@@ -55,8 +57,39 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
 | 2026-06-26 | `VitalsModel.poll()` became `async`; the libproc read stays authoritative for liveness, the nettop read is best-effort | Network genuinely needs async shell I/O. A transient `nettop` failure yields a zero rate for the tick rather than clobbering the target-exited error from libproc — death detection stays with the cheap kernel API |
 | 2026-06-26 | `EvaluateThresholds` `sustainedAlert` parameterized with a value selector (Fowler: Parameterize Function); networkIO and cpuSpike share it | Both are "all-of-window breach" shapes differing only in the measured field (`cpuPercent` vs `networkMegabytesPerSecond`); one tested path, no duplication |
 | 2026-06-26 | Per-tick `nettop -L 1` (one sample then exit), matching the PLAN command exactly | Verified on macOS 15.6: CSV logging mode emits raw integer byte counts, header `,bytes_in,bytes_out,` + one `name.pid,in,out,` row per match; `-x` makes no difference. `-L 1` blocks ~1 s, so the effective net cadence is ~2 s with the 1 s sleep — acceptable for a panel; a long-running streamed nettop is a future optimization |
+| 2026-06-26 | Energy estimate uses `ri_energy_nj`, **not** SPEC's original `ri_billed_energy` (SPEC §3.1/§3.3 updated) | Verified on-machine (macOS 15.6) via `proc_pid_rusage(V6)`: `ri_energy_nj` is cumulative process energy in nanojoules — 1.4 J at start, 10.2 J after a CPU burn (grows with work). `ri_billed_energy` stayed ~0.1 mJ — it's cross-process *billing* (energy this proc caused others to spend), the energy analogue of `ri_billed_system_time`, not the proc's own energy. The skill itself flagged the field name as "confirm in the header" (SPEC §7). Power estimate = Δnj/Δns = W |
+| 2026-06-26 | Energy alerting runs on the **estimate** (watts), always-available & single-unit; measured powermetrics impact is a display-only upgrade | Measured "energy impact" is a unitless proxy on a different scale from estimated watts; one `Threshold.value` can't sensibly compare both. SPEC §3.3 reads "'high' tier … *or* estimate slope" — the estimate slope (watts is the slope of cumulative energy) is the honest, consistent live signal. `.battery` reuses the generalized `sustainedAlert` (no new eval shape) |
+| 2026-06-26 | Measured energy is an **on-demand** `VitalsModel.measureEnergy()`, not per-tick | `powermetrics` is heavy and root-gated — running it on the 1 Hz loop is wrong. The estimate rides every tick (free, from the same rusage call); the measured read is the SPEC §1 "deep run" mode, triggered by a user action, and degrades to the estimate (sets `energyMessage`) when unprivileged |
+| 2026-06-26 | Slice 5 builds the parser + degrade + estimate; the privileged-escalation helper is deferred (chosen with the user) | `PowermetricsSource` sits behind `CommandRunner` so a future privileged runner (`SMAppService`/authorization) drops in without touching the adapter. The powermetrics plist fixture is **synthesized from `man powermetrics`** (root-only tool; no silent `sudo`) and flagged for live validation in the manual smoke (SPEC §6) — the `energy_impact` key name is an unverified assumption |
 
 ## Changelog
+- 2026-06-26 — **Slice 5 (Energy / battery) landed.** Domain: `VitalsReading` grew
+  `energyNanojoules` (`ri_energy_nj`, verified on-machine as cumulative process energy that
+  grows with CPU work — chosen over SPEC's original `ri_billed_energy`, which is cross-process
+  billing; SPEC §3.1/§3.3 updated). `MetricSample` grew `energyWatts`, computed in
+  `derive` as the per-nanosecond energy delta (nj/ns = W) via a new extracted `rate(counter:)`
+  helper now shared with `cpuPercent` (Fowler: Extract Function + Parameterize Function).
+  `Threshold.defaults` added `.battery` (> 5 W sustained 5 s — a labelled starting point) and
+  `EvaluateThresholds` fires it through the existing generalized `sustainedAlert` measuring
+  `energyWatts`. New `EnergySource` port + `EnergyMeasurementError` (`.unavailable` /
+  `.processNotFound`). Data: `PowermetricsSource` runs `powermetrics --samplers tasks
+  --show-process-energy -f plist -n 1 -i 1000` through `CommandRunner` and parses the tasks
+  plist (`PropertyListSerialization`, strips trailing NUL) for the pid's `energy_impact`; a
+  non-zero exit (unprivileged) throws `.unavailable`. `LibprocMetricsSource` now fills
+  `energyNanojoules`. Presentation: `VitalsModel` gained the on-demand `measureEnergy()`
+  (stores `measuredEnergy`, or degrades — `measuredEnergy` nil + `energyMessage` — on failure)
+  plus `canMeasureEnergy`; the watts estimate already rides each derived sample. `VitalsView`
+  gained an energy section (estimate W + "Measure energy" button + measured impact + honest
+  degrade label), the now-live battery pill, the battery alert banner, and a battery threshold
+  row. TDD red-first: Domain `MetricSampleTests` (watts exact / zero-interval / rewind) +
+  `EvaluateThresholdsTests` (battery sustained fires/not, defaults cover battery); Data
+  `PowermetricsSourceTests` (parse impact, pid-not-found, non-zero-exit `.unavailable`, exact
+  command) against a synthesized `Fixtures/powermetrics-tasks.plist`; `LibprocMetricsSourceTests`
+  asserts live energy > 0; Presentation `VitalsModelTests` (estimate attached, measured stored,
+  degrade path). Refactor on green: Extract Function `rate(counter:)`. `swift test` green
+  (45/45), `xcodebuild test` green (app + UI), zero code warnings.
+  ⚠️ The powermetrics fixture is synthesized from `man powermetrics`, not captured live — see
+  the slice-5 decision log + live-risk note; validate against a real root run in the manual smoke.
 - 2026-06-26 — **Slice 4 (Network I/O) landed.** Domain gained the raw `NetworkReading`
   (cumulative bytes_in/out + monotonic stamp), the derived `NetworkRate` with the pure
   `NetworkRate.derive(from:to:)` byte-delta-over-wall-clock math (guards zero-interval and

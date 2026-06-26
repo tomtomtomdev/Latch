@@ -7,6 +7,7 @@ struct MetricSampleTests {
         physFootprintBytes: UInt64 = 0,
         residentBytes: UInt64 = 0,
         threadCount: Int = 0,
+        energyNanojoules: UInt64 = 0,
         wallClockNanos: UInt64 = 0
     ) -> VitalsReading {
         VitalsReading(
@@ -14,6 +15,7 @@ struct MetricSampleTests {
             physFootprintBytes: physFootprintBytes,
             residentBytes: residentBytes,
             threadCount: threadCount,
+            energyNanojoules: energyNanojoules,
             wallClockNanos: wallClockNanos
         )
     }
@@ -76,6 +78,38 @@ struct MetricSampleTests {
         #expect(sample.physFootprintMegabytes == 2)
         #expect(sample.residentBytes == 1_048_576)
         #expect(sample.threadCount == 9)
+    }
+
+    // The energy estimate is power in watts: the cumulative-energy delta (nanojoules) over
+    // the wall-clock delta (nanoseconds) — nj/ns is exactly J/s. 2 J burned over 1 s is 2 W.
+    // This is the always-available estimate from `ri_energy_nj`, degraded from measured
+    // powermetrics energy. (PLAN slice 5; SPEC §3.3)
+    @Test func derive_computesEnergyEstimateInWatts() {
+        let previous = reading(energyNanojoules: 1_000_000_000, wallClockNanos: 0)
+        let current = reading(energyNanojoules: 3_000_000_000, wallClockNanos: 1_000_000_000)
+
+        let sample = MetricSample.derive(from: previous, to: current)
+
+        #expect(sample.energyWatts == 2)
+    }
+
+    // A zero-length interval would divide by zero; report 0 W instead. (PLAN slice 5)
+    @Test func derive_returnsZeroWattsWhenNoTimeElapsed() {
+        let reading = reading(energyNanojoules: 5, wallClockNanos: 7)
+
+        let sample = MetricSample.derive(from: reading, to: reading)
+
+        #expect(sample.energyWatts == 0)
+    }
+
+    // A counter that rewinds (pid reuse) must not produce negative power. (PLAN slice 5)
+    @Test func derive_clampsEnergyWattsToZeroWhenCounterRewinds() {
+        let previous = reading(energyNanojoules: 3_000_000_000, wallClockNanos: 0)
+        let current = reading(energyNanojoules: 1_000_000_000, wallClockNanos: 1_000_000_000)
+
+        let sample = MetricSample.derive(from: previous, to: current)
+
+        #expect(sample.energyWatts == 0)
     }
 
     // A freshly derived sample carries no network rate until one is attached. (PLAN slice 4)

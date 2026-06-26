@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>elapsed_ns</key>
+	<integer>1003187000</integer>
+	<key>tasks</key>
+	<array>
+		<dict>
+			<key>name</key>
+			<string>WindowServer</string>
+			<key>pid</key>
+			<integer>350</integer>
+			<key>cputime_ms_per_s</key>
+			<real>21.4</real>
+			<key>energy_impact</key>
+			<real>9.83</real>
+		</dict>
+		<dict>
+			<key>name</key>
+			<string>apsd</string>
+			<key>pid</key>
+			<integer>148</integer>
+			<key>cputime_ms_per_s</key>
+			<real>140.2</real>
+			<key>energy_impact</key>
+			<real>42.57</real>
+		</dict>
+		<dict>
+			<key>name</key>
+			<string>ALL_TASKS</string>
+			<key>pid</key>
+			<integer>-2</integer>
+			<key>cputime_ms_per_s</key>
+			<real>388.6</real>
+			<key>energy_impact</key>
+			<real>118.42</real>
+		</dict>
+	</array>
+</dict>
+</plist>

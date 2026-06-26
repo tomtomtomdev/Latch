@@ -16,6 +16,7 @@ struct VitalsView: View {
         _model = State(initialValue: VitalsModel(
             source: LibprocMetricsSource(),
             networkSource: NettopMetricsSource(commandRunner: ProcessCommandRunner()),
+            energySource: PowermetricsSource(commandRunner: ProcessCommandRunner()),
             pid: target.pid ?? -1
         ))
     }
@@ -33,6 +34,7 @@ struct VitalsView: View {
                 cpuChart
                 memoryChart
                 networkChart
+                energySection
             }
             .padding()
         }
@@ -77,8 +79,39 @@ struct VitalsView: View {
         case .networkIO:
             let mbps = alert.sample.networkMegabytesPerSecond
             return String(format: "High network I/O — %.1f MB/s, sustained", mbps)
+        case .battery:
+            return String(format: "High energy use — %.1f W estimated, sustained", alert.sample.energyWatts)
         default:
             return "\(alert.signal.title) threshold breached"
+        }
+    }
+
+    /// Energy: the always-available estimate (watts, from `ri_energy_nj`) plus an on-demand
+    /// measured reading via `powermetrics`. The two are labelled distinctly — estimate vs
+    /// measured — and a declined/unavailable privileged read degrades honestly. (SPEC §3.3, §5)
+    @ViewBuilder private var energySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Energy").font(.headline)
+            HStack(spacing: 24) {
+                stat("Estimate", latest { String(format: "%.2f W", $0.energyWatts) })
+                if let measured = model.measuredEnergy {
+                    stat("Measured (impact)", String(format: "%.1f", measured))
+                }
+                if model.canMeasureEnergy {
+                    Button("Measure energy", systemImage: "bolt.fill") {
+                        Task { await model.measureEnergy() }
+                    }
+                }
+            }
+            Text("Estimate from rusage energy (no privileges). "
+                + "Measured energy uses powermetrics and needs root.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let message = model.energyMessage {
+                Label(message, systemImage: "lock.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
         }
     }
 
@@ -206,6 +239,7 @@ private struct ThresholdSettingsView: View {
         case .cpuSpike: "CPU spike above"
         case .memoryLeak: "Footprint rising over"
         case .networkIO: "Network I/O above"
+        case .battery: "Energy estimate above"
         default: signal.title
         }
     }
@@ -215,6 +249,7 @@ private struct ThresholdSettingsView: View {
         case .cpuSpike: "% core"
         case .memoryLeak: "MB/min"
         case .networkIO: "MB/s"
+        case .battery: "W"
         default: ""
         }
     }
@@ -224,6 +259,7 @@ private struct ThresholdSettingsView: View {
         case .cpuSpike: 10...400
         case .memoryLeak: 1...100
         case .networkIO: 1...100
+        case .battery: 1...100
         default: 0...100
         }
     }

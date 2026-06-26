@@ -9,8 +9,10 @@ import LatchDomain
 ///
 /// Verified against the macOS SDK headers (`<sys/resource.h>`, `<sys/proc_info.h>`,
 /// `libproc.h`): `rusage_info_v6` exposes `ri_user_time`/`ri_system_time` (nanoseconds),
-/// `ri_phys_footprint`, `ri_resident_size`; `proc_taskinfo.pti_threadnum` is the live
-/// thread count. `RUSAGE_INFO_V6 == 6`. (SPEC §7)
+/// `ri_phys_footprint`, `ri_resident_size`, and `ri_energy_nj` (cumulative process energy
+/// in nanojoules — the always-available energy estimate, verified non-zero and growing with
+/// CPU work on macOS 15.6); `proc_taskinfo.pti_threadnum` is the live thread count.
+/// `RUSAGE_INFO_V6 == 6`. (SPEC §3.3, §7)
 public struct LibprocMetricsSource: MetricsSource {
     public init() {}
 
@@ -21,6 +23,7 @@ public struct LibprocMetricsSource: MetricsSource {
             physFootprintBytes: usage.ri_phys_footprint,
             residentBytes: usage.ri_resident_size,
             threadCount: try threadCount(of: pid),
+            energyNanojoules: usage.ri_energy_nj,
             wallClockNanos: clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
         )
     }

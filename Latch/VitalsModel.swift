@@ -13,11 +13,20 @@ final class VitalsModel {
     private(set) var alerts: [Alert] = []
     private(set) var thresholds: [Threshold]
     private(set) var errorMessage: String?
+    /// The last on-demand `powermetrics` measurement (energy impact), or `nil` when none has
+    /// been taken or the privileged read degraded to the estimate. (SPEC §3.3, §5)
+    private(set) var measuredEnergy: Double?
+    /// Why the measured-energy read is unavailable (e.g. needs root), shown beside the
+    /// estimate so the degrade is honest rather than silent. (SPEC §1, §5)
+    private(set) var energyMessage: String?
 
     var latest: MetricSample? { samples.last }
+    /// Whether an on-demand measured-energy read is wired for this target. (SPEC §5)
+    var canMeasureEnergy: Bool { energySource != nil }
 
     private let source: MetricsSource
     private let networkSource: NetworkSource?
+    private let energySource: EnergySource?
     private let pid: Int32
     private let capacity: Int
     private let evaluateThresholds = EvaluateThresholds()
@@ -25,16 +34,19 @@ final class VitalsModel {
     private var previousNetworkReading: NetworkReading?
 
     /// `capacity` defaults to one hour of 1 Hz samples — the retention cap from SPEC §4.
-    /// `networkSource` is optional: without it, samples carry a zero network rate.
+    /// `networkSource` and `energySource` are optional: without them, samples carry a zero
+    /// network rate and measured energy is unavailable (the estimate still rides each tick).
     init(
         source: MetricsSource,
         networkSource: NetworkSource? = nil,
+        energySource: EnergySource? = nil,
         pid: Int32,
         capacity: Int = 3600,
         thresholds: [Threshold] = Threshold.defaults
     ) {
         self.source = source
         self.networkSource = networkSource
+        self.energySource = energySource
         self.pid = pid
         self.capacity = capacity
         self.thresholds = thresholds
@@ -72,6 +84,24 @@ final class VitalsModel {
             return NetworkRate.derive(from: previousNetworkReading, to: reading)
         } catch {
             return .zero
+        }
+    }
+
+    /// Take one on-demand measured-energy reading via `powermetrics`. This is the deep,
+    /// privileged read (SPEC §1's deep-run mode) — distinct from the estimate on every tick.
+    /// If the tool can't run (no root) the measurement degrades: `measuredEnergy` stays
+    /// `nil` and `energyMessage` explains why, so the UI never fakes a measured figure.
+    func measureEnergy() async {
+        guard let energySource else { return }
+        do {
+            measuredEnergy = try await energySource.measuredEnergyImpact(pid: pid)
+            energyMessage = nil
+        } catch EnergyMeasurementError.unavailable {
+            measuredEnergy = nil
+            energyMessage = "Measured energy needs elevated privileges — showing the estimate."
+        } catch {
+            measuredEnergy = nil
+            energyMessage = "Measured energy unavailable — showing the estimate."
         }
     }
 

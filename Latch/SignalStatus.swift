@@ -39,11 +39,11 @@ extension SignalKind {
         }
     }
 
-    /// Signals Latch can monitor from the live polling loop today. Network joined them via
-    /// `nettop` throughput (PLAN slice 4). The others need a deep diagnostic run (zombies,
-    /// hitches) or a source from a later slice (energy) and stay `unavailable` until then —
-    /// never faked. (SPEC §1)
+    /// Signals Latch can monitor from the live polling loop today. Energy joined them via
+    /// the always-available `ri_energy_nj` estimate (PLAN slice 5). The rest need a deep
+    /// diagnostic run (zombies, hitches) and stay `unavailable` until their slice — never
+    /// faked. (SPEC §1)
     var hasLiveIndicator: Bool {
-        self == .cpuSpike || self == .memoryLeak || self == .networkIO
+        self == .cpuSpike || self == .memoryLeak || self == .networkIO || self == .battery
     }
 }

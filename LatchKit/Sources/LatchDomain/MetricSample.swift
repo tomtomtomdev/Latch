@@ -16,6 +16,10 @@ public struct MetricSample: Sendable, Equatable {
     /// `NetworkRate` is attached via `withNetwork`). (SPEC §4; PLAN slice 4)
     public let netInBytesPerSec: Double
     public let netOutBytesPerSec: Double
+    /// The live energy *estimate* in watts, derived from the `ri_energy_nj` delta. Always
+    /// available (no root) — `powermetrics` measured energy is a separate, on-demand,
+    /// higher-fidelity figure surfaced alongside it, not folded in here. (SPEC §3.3; PLAN slice 5)
+    public let energyWatts: Double
 
     public init(
         cpuPercent: Double,
@@ -23,7 +27,8 @@ public struct MetricSample: Sendable, Equatable {
         residentBytes: UInt64,
         threadCount: Int,
         netInBytesPerSec: Double = 0,
-        netOutBytesPerSec: Double = 0
+        netOutBytesPerSec: Double = 0,
+        energyWatts: Double = 0
     ) {
         self.cpuPercent = cpuPercent
         self.physFootprintBytes = physFootprintBytes
@@ -31,6 +36,7 @@ public struct MetricSample: Sendable, Equatable {
         self.threadCount = threadCount
         self.netInBytesPerSec = netInBytesPerSec
         self.netOutBytesPerSec = netOutBytesPerSec
+        self.energyWatts = energyWatts
     }
 
     /// Physical footprint in mebibytes, for the memory gauge.
@@ -55,27 +61,45 @@ public struct MetricSample: Sendable, Equatable {
             residentBytes: residentBytes,
             threadCount: threadCount,
             netInBytesPerSec: rate.inBytesPerSec,
-            netOutBytesPerSec: rate.outBytesPerSec
+            netOutBytesPerSec: rate.outBytesPerSec,
+            energyWatts: energyWatts
         )
     }
 
-    /// CPU% over the interval `previous` → `current`, with the memory and thread counts
-    /// taken from `current`. Guards the two failure modes of a cumulative counter: a
-    /// zero-length interval (division by zero) and a counter that rewound on pid reuse.
+    /// CPU% and the energy estimate over the interval `previous` → `current`, with the
+    /// memory and thread counts taken from `current`. Both rates guard the two failure modes
+    /// of a cumulative counter: a zero-length interval (division by zero) and a counter that
+    /// rewound on pid reuse.
     public static func derive(from previous: VitalsReading, to current: VitalsReading) -> MetricSample {
         MetricSample(
             cpuPercent: cpuPercent(from: previous, to: current),
             physFootprintBytes: current.physFootprintBytes,
             residentBytes: current.residentBytes,
-            threadCount: current.threadCount
+            threadCount: current.threadCount,
+            energyWatts: energyWatts(from: previous, to: current)
         )
     }
 
     private static func cpuPercent(from previous: VitalsReading, to current: VitalsReading) -> Double {
+        rate(from: previous, to: current, counter: \.cpuTimeNanos).map { $0 * 100 } ?? 0
+    }
+
+    /// Power in watts: nanojoules per nanosecond is exactly joules per second.
+    private static func energyWatts(from previous: VitalsReading, to current: VitalsReading) -> Double {
+        rate(from: previous, to: current, counter: \.energyNanojoules) ?? 0
+    }
+
+    /// The per-nanosecond rate of a cumulative `counter` over the interval. `nil` when the
+    /// interval is zero-length or the counter rewound (pid reuse) — callers map that to 0.
+    private static func rate(
+        from previous: VitalsReading,
+        to current: VitalsReading,
+        counter: (VitalsReading) -> UInt64
+    ) -> Double? {
         guard current.wallClockNanos > previous.wallClockNanos,
-              current.cpuTimeNanos >= previous.cpuTimeNanos else { return 0 }
-        let cpuDelta = current.cpuTimeNanos - previous.cpuTimeNanos
+              counter(current) >= counter(previous) else { return nil }
+        let delta = counter(current) - counter(previous)
         let wallDelta = current.wallClockNanos - previous.wallClockNanos
-        return Double(cpuDelta) / Double(wallDelta) * 100
+        return Double(delta) / Double(wallDelta)
     }
 }

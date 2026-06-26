@@ -13,6 +13,12 @@ public struct VitalsReading: Sendable, Equatable {
     public let physFootprintBytes: UInt64
     public let residentBytes: UInt64
     public let threadCount: Int
+    /// `ri_energy_nj` — cumulative energy attributed to the process since start, in
+    /// nanojoules. Like CPU time it is meaningless alone; a power *estimate* (watts) is
+    /// derived from the delta between two readings (see `MetricSample.derive`). This is the
+    /// always-available estimate that `powermetrics` measured energy upgrades when granted
+    /// root. (SPEC §3.3; PLAN slice 5)
+    public let energyNanojoules: UInt64
     /// Monotonic clock value captured at read time, in nanoseconds. Used only for the
     /// wall-clock delta between two readings, so its epoch is irrelevant.
     public let wallClockNanos: UInt64
@@ -22,12 +28,14 @@ public struct VitalsReading: Sendable, Equatable {
         physFootprintBytes: UInt64,
         residentBytes: UInt64,
         threadCount: Int,
+        energyNanojoules: UInt64 = 0,
         wallClockNanos: UInt64
     ) {
         self.cpuTimeNanos = cpuTimeNanos
         self.physFootprintBytes = physFootprintBytes
         self.residentBytes = residentBytes
         self.threadCount = threadCount
+        self.energyNanojoules = energyNanojoules
         self.wallClockNanos = wallClockNanos
     }
 }

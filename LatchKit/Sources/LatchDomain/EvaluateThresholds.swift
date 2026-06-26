@@ -20,6 +20,7 @@ public struct EvaluateThresholds: Sendable {
         case .memoryLeak: risingTrendAlert(threshold, samples)
         case .cpuSpike: sustainedAlert(threshold, samples, measuring: \.cpuPercent)
         case .networkIO: sustainedAlert(threshold, samples, measuring: \.networkMegabytesPerSecond)
+        case .battery: sustainedAlert(threshold, samples, measuring: \.energyWatts)
         default: nil // no live indicator yet — added with each signal's slice. (SPEC §1)
         }
     }

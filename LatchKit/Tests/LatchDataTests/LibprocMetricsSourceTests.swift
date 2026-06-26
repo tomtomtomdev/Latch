@@ -15,6 +15,7 @@ struct LibprocMetricsSourceTests {
         #expect(reading.physFootprintBytes > 0)
         #expect(reading.residentBytes > 0)
         #expect(reading.cpuTimeNanos > 0)
+        #expect(reading.energyNanojoules > 0)
         #expect(reading.wallClockNanos > 0)
     }
 

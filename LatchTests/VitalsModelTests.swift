@@ -5,13 +5,14 @@ import LatchDomain
 @MainActor
 struct VitalsModelTests {
     private func reading(
-        cpu: UInt64, wall: UInt64, footprint: UInt64 = 0, threads: Int = 0
+        cpu: UInt64, wall: UInt64, footprint: UInt64 = 0, threads: Int = 0, energy: UInt64 = 0
     ) -> VitalsReading {
         VitalsReading(
             cpuTimeNanos: cpu,
             physFootprintBytes: footprint,
             residentBytes: 0,
             threadCount: threads,
+            energyNanojoules: energy,
             wallClockNanos: wall
         )
     }
@@ -91,6 +92,47 @@ struct VitalsModelTests {
 
         #expect(model.latest?.netInBytesPerSec == 1_000_000)
         #expect(model.latest?.networkMegabytesPerSecond == 1)
+    }
+
+    // Each derived sample carries the always-available energy estimate (watts) from the
+    // ri_energy_nj delta: 2 J burned over 1 s is 2 W. (PLAN slice 5)
+    @Test func poll_attachesEnergyEstimateFromConsecutiveReadings() async {
+        let source = FakeMetricsSource(readings: [
+            reading(cpu: 0, wall: 0, energy: 1_000_000_000),
+            reading(cpu: 0, wall: 1_000_000_000, energy: 3_000_000_000),
+        ])
+        let model = VitalsModel(source: source, pid: 1)
+
+        await model.poll()
+        await model.poll()
+
+        #expect(model.latest?.energyWatts == 2)
+    }
+
+    // The on-demand measured read upgrades the estimate to powermetrics' higher-fidelity
+    // figure when privilege is granted. (PLAN slice 5; SPEC §3.3)
+    @Test func measureEnergy_storesMeasuredImpactFromSource() async {
+        let source = FakeMetricsSource(readings: [reading(cpu: 0, wall: 0)])
+        let model = VitalsModel(source: source, energySource: FakeEnergySource(impact: 42.57), pid: 1)
+
+        await model.measureEnergy()
+
+        #expect(model.measuredEnergy == 42.57)
+        #expect(model.energyMessage == nil)
+    }
+
+    // When powermetrics can't run (no root), the measured read degrades: no measurement is
+    // shown and the user is told why — the live estimate carries on. (SPEC §1, §5)
+    @Test func measureEnergy_degradesWhenSourceUnavailable() async {
+        let source = FakeMetricsSource(readings: [reading(cpu: 0, wall: 0)])
+        let model = VitalsModel(
+            source: source, energySource: FakeEnergySource(failsWith: .unavailable), pid: 1
+        )
+
+        await model.measureEnergy()
+
+        #expect(model.measuredEnergy == nil)
+        #expect(model.energyMessage != nil)
     }
 
     // Readings whose CPU time grows by `percent`% of a wall-second each tick.

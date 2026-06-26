@@ -32,5 +32,8 @@ public extension Threshold {
         Threshold(signal: .memoryLeak, comparator: .greaterThan, value: 2, window: 300),
         // Network I/O: > 5 MB/s sustained over 5 s.
         Threshold(signal: .networkIO, comparator: .greaterThan, value: 5, window: 5),
+        // Energy: estimated power draw > 5 W sustained over 5 s. A starting point, not
+        // science — the rusage estimate's magnitude varies by hardware; tune per target.
+        Threshold(signal: .battery, comparator: .greaterThan, value: 5, window: 5),
     ]
 }

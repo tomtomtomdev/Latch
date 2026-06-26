@@ -44,9 +44,16 @@ struct EvaluateThresholdsTests {
             .withNetwork(NetworkRate(inBytesPerSec: megabytesPerSecond * 1_000_000, outBytesPerSec: 0))
     }
 
+    private func energy(watts: Double) -> MetricSample {
+        MetricSample(
+            cpuPercent: 0, physFootprintBytes: 0, residentBytes: 0, threadCount: 1, energyWatts: watts
+        )
+    }
+
     private let cpuThreshold = Threshold(signal: .cpuSpike, comparator: .greaterThan, value: 80, window: 3)
     private let leakThreshold = Threshold(signal: .memoryLeak, comparator: .greaterThan, value: 2, window: 6)
     private let networkThreshold = Threshold(signal: .networkIO, comparator: .greaterThan, value: 5, window: 3)
+    private let energyThreshold = Threshold(signal: .battery, comparator: .greaterThan, value: 5, window: 3)
 
     // CPU spike fires only when the breach is sustained across the whole window. (SPEC §3.3)
     @Test func cpuSpike_firesWhenSustainedOverWindow() {
@@ -121,6 +128,26 @@ struct EvaluateThresholdsTests {
         #expect(alerts.isEmpty)
     }
 
+    // High energy fires only when the power estimate stays above the limit across the whole
+    // window — a sustained breach, like CPU and network. The estimate (watts) is the
+    // always-available signal; measured powermetrics energy is a display upgrade. (SPEC §3.3)
+    @Test func battery_firesWhenSustainedOverWindow() {
+        let samples = [energy(watts: 7), energy(watts: 6), energy(watts: 8)]
+
+        let alerts = evaluate(samples: samples, thresholds: [energyThreshold])
+
+        #expect(alerts.map(\.signal) == [.battery])
+    }
+
+    // A single dip below the limit inside the window means the draw was not sustained.
+    @Test func battery_doesNotFireWhenNotSustained() {
+        let samples = [energy(watts: 7), energy(watts: 1), energy(watts: 8)]
+
+        let alerts = evaluate(samples: samples, thresholds: [energyThreshold])
+
+        #expect(alerts.isEmpty)
+    }
+
     // Defaults exist for every signal that has a live indicator in this slice. (SPEC §3.3)
     @Test func defaults_coverLiveSignals() {
         let signals = Set(Threshold.defaults.map(\.signal))
@@ -128,5 +155,6 @@ struct EvaluateThresholdsTests {
         #expect(signals.contains(.cpuSpike))
         #expect(signals.contains(.memoryLeak))
         #expect(signals.contains(.networkIO))
+        #expect(signals.contains(.battery))
     }
 }

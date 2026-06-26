@@ -25,7 +25,7 @@ any slice pretend otherwise.
 | Cheap per-process metrics (`proc_pid_rusage`, `proc_pidinfo`) | Works for same-UID processes without a task port. This is the low-friction path. | This is the backbone of the live dashboard (memory footprint, CPU, disk I/O, energy estimate). |
 | **Zombie** detection (`NSZombieEnabled`) | Must be injected as an **environment variable at launch**. You cannot retroactively enable it on an already-running process. | The Zombies feature must **relaunch** the target under instrumentation. "Latch onto running" does not apply to zombies — be explicit in the UI. |
 | **Leak** detection | `leaks <pid>` / xctrace `Leaks` template can attach to a running same-UID process. Accuracy improves if `MallocStackLogging` was set at launch. | Leaks can attach live, but malloc stack backtraces (the part that tells you *where* the leak came from) need launch-time `MallocStackLogging`. |
-| **Energy / battery** (`powermetrics`) | Requires **root** (sudo). Per-process energy via `--samplers tasks`. | Energy sampling prompts for privilege escalation, or degrades to the cheaper `ri_billed_energy` estimate from rusage. |
+| **Energy / battery** (`powermetrics`) | Requires **root** (sudo). Per-process energy via `--samplers tasks`. | Energy sampling prompts for privilege escalation, or degrades to the cheaper `ri_energy_nj` power estimate from rusage. |
 | **iOS** profiling | Only **development-signed** apps on a **connected, unlocked, paired** device. App Store apps cannot be profiled. Tooling: `xctrace` and `xcrun devicectl`. | iOS support is gated on a dev-provisioned target + device. App Store / arbitrary apps are out of scope. |
 | **Battery from inside an iOS app** | `MetricKit` (`MXMetricManager`) reports real energy/hang/CPU/memory daily, but requires SDK integration in the *target* and is *post-hoc*. | Offered as an optional complement for iOS targets you own — not part of external attach. |
 
@@ -119,7 +119,7 @@ Each adapter is replaceable by a `Fake…` double in tests. No adapter leaks `Pr
 | Hitch / hang | main-thread CPU stall heuristic from sampling | `Time Profiler` / `spindump` / `sample` | main thread blocked > 250 ms (hang); frame > 16.7 ms |
 | CPU spike | CPU% from `ri_user_time`+`ri_system_time` delta | `Time Profiler` | > 80% of one core for > 3 s |
 | Network I/O | `nettop` bytes_in/out rate | xctrace `Network` | > 5 MB/s sustained 5 s |
-| Battery/energy | `ri_billed_energy` estimate; `powermetrics` if root | xctrace `Energy Log` | "high" tier from powermetrics, or estimate slope |
+| Battery/energy | `ri_energy_nj` power estimate (W); `powermetrics` measured impact if root | xctrace `Energy Log` | est. power > 5 W sustained 5 s (measured impact is a display upgrade) |
 
 > Thresholds are **defaults**, not science. They ship configurable and are stored
 > per-target. Document them in-app as starting points.
