@@ -39,8 +39,14 @@ struct EvaluateThresholdsTests {
         )
     }
 
+    private func network(megabytesPerSecond: Double) -> MetricSample {
+        MetricSample(cpuPercent: 0, physFootprintBytes: 0, residentBytes: 0, threadCount: 1)
+            .withNetwork(NetworkRate(inBytesPerSec: megabytesPerSecond * 1_000_000, outBytesPerSec: 0))
+    }
+
     private let cpuThreshold = Threshold(signal: .cpuSpike, comparator: .greaterThan, value: 80, window: 3)
     private let leakThreshold = Threshold(signal: .memoryLeak, comparator: .greaterThan, value: 2, window: 6)
+    private let networkThreshold = Threshold(signal: .networkIO, comparator: .greaterThan, value: 5, window: 3)
 
     // CPU spike fires only when the breach is sustained across the whole window. (SPEC §3.3)
     @Test func cpuSpike_firesWhenSustainedOverWindow() {
@@ -96,11 +102,31 @@ struct EvaluateThresholdsTests {
         #expect(alerts.isEmpty)
     }
 
+    // Network I/O fires only when throughput stays above the limit across the whole
+    // window — a sustained breach, like a CPU spike. (SPEC §3.3)
+    @Test func networkIO_firesWhenSustainedOverWindow() {
+        let samples = [network(megabytesPerSecond: 6), network(megabytesPerSecond: 7), network(megabytesPerSecond: 6)]
+
+        let alerts = evaluate(samples: samples, thresholds: [networkThreshold])
+
+        #expect(alerts.map(\.signal) == [.networkIO])
+    }
+
+    // A single drop below the limit inside the window means the spike was not sustained.
+    @Test func networkIO_doesNotFireOnABurst() {
+        let samples = [network(megabytesPerSecond: 6), network(megabytesPerSecond: 1), network(megabytesPerSecond: 6)]
+
+        let alerts = evaluate(samples: samples, thresholds: [networkThreshold])
+
+        #expect(alerts.isEmpty)
+    }
+
     // Defaults exist for every signal that has a live indicator in this slice. (SPEC §3.3)
     @Test func defaults_coverLiveSignals() {
         let signals = Set(Threshold.defaults.map(\.signal))
 
         #expect(signals.contains(.cpuSpike))
         #expect(signals.contains(.memoryLeak))
+        #expect(signals.contains(.networkIO))
     }
 }

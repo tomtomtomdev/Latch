@@ -12,17 +12,51 @@ public struct MetricSample: Sendable, Equatable {
     public let physFootprintBytes: UInt64
     public let residentBytes: UInt64
     public let threadCount: Int
+    /// Network throughput at this tick, derived from `nettop` byte deltas (0 until a
+    /// `NetworkRate` is attached via `withNetwork`). (SPEC §4; PLAN slice 4)
+    public let netInBytesPerSec: Double
+    public let netOutBytesPerSec: Double
 
-    public init(cpuPercent: Double, physFootprintBytes: UInt64, residentBytes: UInt64, threadCount: Int) {
+    public init(
+        cpuPercent: Double,
+        physFootprintBytes: UInt64,
+        residentBytes: UInt64,
+        threadCount: Int,
+        netInBytesPerSec: Double = 0,
+        netOutBytesPerSec: Double = 0
+    ) {
         self.cpuPercent = cpuPercent
         self.physFootprintBytes = physFootprintBytes
         self.residentBytes = residentBytes
         self.threadCount = threadCount
+        self.netInBytesPerSec = netInBytesPerSec
+        self.netOutBytesPerSec = netOutBytesPerSec
     }
 
     /// Physical footprint in mebibytes, for the memory gauge.
     public var physFootprintMegabytes: Double {
         Double(physFootprintBytes) / 1_048_576
+    }
+
+    /// Combined in+out throughput in **decimal** megabytes per second — the figure the
+    /// network threshold compares against ("> 5 MB/s", SPEC §3.3). Network throughput is
+    /// quoted in decimal MB by convention, so this uses 1_000_000, not 1_048_576.
+    public var networkMegabytesPerSecond: Double {
+        (netInBytesPerSec + netOutBytesPerSec) / 1_000_000
+    }
+
+    /// A copy of this sample with `rate` attached. The libproc vitals (CPU/mem/threads)
+    /// and the `nettop` throughput come from independent sources; the model composes them
+    /// into one sample per tick. (SPEC §3.2; PLAN slice 4)
+    public func withNetwork(_ rate: NetworkRate) -> MetricSample {
+        MetricSample(
+            cpuPercent: cpuPercent,
+            physFootprintBytes: physFootprintBytes,
+            residentBytes: residentBytes,
+            threadCount: threadCount,
+            netInBytesPerSec: rate.inBytesPerSec,
+            netOutBytesPerSec: rate.outBytesPerSec
+        )
     }
 
     /// CPU% over the interval `previous` → `current`, with the memory and thread counts

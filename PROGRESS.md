@@ -11,7 +11,7 @@ to the decision log when a non-obvious choice is made. Never delete history.
 | 1 | Discover & pick local target | ✅ Done | §3.2 | `TargetDiscovery`/`Target` in Domain; `LibprocTargetDiscovery` + `ProcessLister` seam; same-UID filter; searchable picker UI |
 | 2 | Live vitals (mem + CPU) | ✅ Done | §3.3, §4 | `MetricsSource`/`VitalsReading`/`MetricSample` in Domain (pure CPU% delta math, % of one core); `LibprocMetricsSource` via `proc_pid_rusage(V6)`+`proc_pidinfo`; `VitalsModel` 1 Hz ring-buffer poller + Swift Charts dashboard |
 | 3 | Thresholds & alerting | ✅ Done | §3.3, §4 | Domain `Comparator`/`Threshold`(+`defaults`)/`Alert`/`AlertSeverity` + pure `EvaluateThresholds` (sustained CPU breach + least-squares footprint-rise leak hint); `VitalsModel` recomputes active alerts per tick + per-target `updateThreshold`; UI signal pills (honest `unavailable` for non-live signals), alert banners, threshold-tuning popover |
-| 4 | Network I/O | ⬜ Not started | §3.2 | — |
+| 4 | Network I/O | ✅ Done | §3.2, §3.3 | Domain `NetworkReading`(raw cumulative bytes)+`NetworkRate`(pure `derive` rate math, guards zero-interval/rewind)+`NetworkSource` port; `MetricSample` grew net rate fields + `withNetwork` + `networkMegabytesPerSecond` (decimal MB); `.networkIO` default (>5 MB/s, 5 s) via generalized sustained eval; `NettopMetricsSource` parses `nettop -P -L 1 -J …` CSV over `CommandRunner` (committed fixtures); `VitalsModel.poll()` now async, composes best-effort network rate onto each sample; net pill live + throughput chart |
 | 5 | Energy / battery | ⬜ Not started | §1, §5 | needs root path |
 | 6 | Leaks (attach) | ⬜ Not started | §1 | MallocStackLogging caveat |
 | 7 | Zombies (relaunch) | ⬜ Not started | §1 | relaunch-only |
@@ -50,8 +50,36 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
 | 2026-06-26 | `Threshold.defaults` only covers `cpuSpike` + `memoryLeak`; UI pills mark the other four signals `unavailable` | No fake thresholds for capabilities that don't exist yet — zombies/hitch/network/energy get defaults as their slices land (SPEC §1) |
 | 2026-06-26 | `Alert` omits `firedAt`; severity fixed to `.warning` this slice | Keeps Domain evaluation pure/deterministic (no clock); active alerts are recomputed from the live window each tick. `firedAt` + persistence arrive with session storage (slice 10); `critical` is reserved for tiered signals (energy, slice 5) (SPEC §4) |
 | 2026-06-26 | Threshold overrides held in `VitalsModel` (per-target by construction), in-memory | One model per latched target, so per-model = per-target. SwiftData persistence of tuned thresholds deferred to the storage slice; not required by slice 3's test list |
+| 2026-06-26 | Network modeled as its own `NetworkReading`→`NetworkRate` pair behind a `NetworkSource` port, mirroring `VitalsReading`→`MetricSample` | nettop is a separate, async (shell) backend from libproc; the adapter-per-source rule (SPEC §3.2) keeps it independently testable. The derived rate is then *composed onto* the existing `MetricSample` via `withNetwork`, so the unified §4 sample, the alert window, and `EvaluateThresholds` stay coherent on one type |
+| 2026-06-26 | Network throughput in **decimal** MB/s (÷1_000_000), unlike footprint MiB | Network is universally quoted in decimal MB; the default threshold ("> 5 MB/s", SPEC §3.3) reads in those units. `networkMegabytesPerSecond` documents the divisor at the boundary |
+| 2026-06-26 | `VitalsModel.poll()` became `async`; the libproc read stays authoritative for liveness, the nettop read is best-effort | Network genuinely needs async shell I/O. A transient `nettop` failure yields a zero rate for the tick rather than clobbering the target-exited error from libproc — death detection stays with the cheap kernel API |
+| 2026-06-26 | `EvaluateThresholds` `sustainedAlert` parameterized with a value selector (Fowler: Parameterize Function); networkIO and cpuSpike share it | Both are "all-of-window breach" shapes differing only in the measured field (`cpuPercent` vs `networkMegabytesPerSecond`); one tested path, no duplication |
+| 2026-06-26 | Per-tick `nettop -L 1` (one sample then exit), matching the PLAN command exactly | Verified on macOS 15.6: CSV logging mode emits raw integer byte counts, header `,bytes_in,bytes_out,` + one `name.pid,in,out,` row per match; `-x` makes no difference. `-L 1` blocks ~1 s, so the effective net cadence is ~2 s with the 1 s sleep — acceptable for a panel; a long-running streamed nettop is a future optimization |
 
 ## Changelog
+- 2026-06-26 — **Slice 4 (Network I/O) landed.** Domain gained the raw `NetworkReading`
+  (cumulative bytes_in/out + monotonic stamp), the derived `NetworkRate` with the pure
+  `NetworkRate.derive(from:to:)` byte-delta-over-wall-clock math (guards zero-interval and
+  counter rewind), and the `NetworkSource` port. `MetricSample` grew `netInBytesPerSec`/
+  `netOutBytesPerSec` (default 0), a `withNetwork(_:)` composer, and the
+  `networkMegabytesPerSecond` (decimal MB/s) the threshold reads. `Threshold.defaults`
+  added `.networkIO` (> 5 MB/s sustained 5 s) and `EvaluateThresholds` now fires it via a
+  `sustainedAlert` generalized with a value selector (shared with cpuSpike). Data gained
+  `NettopMetricsSource` — runs the exact PLAN command `nettop -P -L 1 -J bytes_in,bytes_out
+  -p <pid>` through `CommandRunner` and sums the CSV data rows (header/blank lines skipped
+  because their byte fields aren't numbers); verified against live macOS 15.6 output.
+  Presentation: `VitalsModel.poll()` is now `async` and composes a best-effort network rate
+  onto each derived sample (a nettop failure degrades to a zero rate without clobbering the
+  libproc liveness error); `VitalsView` got a network header stat, a purple throughput
+  chart, a live network status pill, a network-alert banner, and a network row in the
+  threshold popover. TDD red-first: Domain `NetworkRateTests` (rate from deltas, time
+  scaling, zero-interval + rewind guards) + `MetricSample` net tests + `EvaluateThresholds`
+  networkIO (fires sustained / not on a burst) + defaults; Data `NettopMetricsSourceTests`
+  (parse traffic row, header-only → 0, multi-row sum, exact-command pin) against committed
+  `Fixtures/`; Presentation `VitalsModelTests` (rate attached from consecutive readings,
+  sustained-network alert). Refactor on green: Parameterize Function on `sustainedAlert`,
+  Extract Function `latest(_:)` removing the repeated header-formatting pattern. `swift
+  test` green (36/36), `xcodebuild test` green (app + UI), zero code warnings.
 - 2026-06-26 — **Slice 3 (Thresholds & alerting) landed.** Domain gained `Comparator`
   (pure `matches`), `Threshold` (signal/comparator/value/window + `defaults` for the
   live signals), `Alert`/`AlertSeverity`, and the pure `EvaluateThresholds` use case:

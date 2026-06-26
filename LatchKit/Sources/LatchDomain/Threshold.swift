@@ -22,13 +22,15 @@ public struct Threshold: Sendable, Equatable, Identifiable {
 
 public extension Threshold {
     /// Starting-point thresholds for the signals with a live indicator today. The other
-    /// signals (zombies, hitch, network, battery) gain defaults as their live or deep
-    /// backing lands in later slices — no fake thresholds for capabilities that don't
-    /// exist yet. (SPEC §1, §3.3)
+    /// signals (zombies, hitch, battery) gain defaults as their live or deep backing lands
+    /// in later slices — no fake thresholds for capabilities that don't exist yet.
+    /// (SPEC §1, §3.3)
     static let defaults: [Threshold] = [
         // CPU spike: > 80% of one core for > 3 s.
         Threshold(signal: .cpuSpike, comparator: .greaterThan, value: 80, window: 3),
         // Memory leak hint: footprint rising > 2 MB/min over a 5 min window (300 s @ 1 Hz).
         Threshold(signal: .memoryLeak, comparator: .greaterThan, value: 2, window: 300),
+        // Network I/O: > 5 MB/s sustained over 5 s.
+        Threshold(signal: .networkIO, comparator: .greaterThan, value: 5, window: 5),
     ]
 }

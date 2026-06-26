@@ -18,15 +18,22 @@ public struct EvaluateThresholds: Sendable {
     private func alert(for threshold: Threshold, over samples: [MetricSample]) -> Alert? {
         switch threshold.signal {
         case .memoryLeak: risingTrendAlert(threshold, samples)
-        case .cpuSpike: sustainedAlert(threshold, samples)
+        case .cpuSpike: sustainedAlert(threshold, samples, measuring: \.cpuPercent)
+        case .networkIO: sustainedAlert(threshold, samples, measuring: \.networkMegabytesPerSecond)
         default: nil // no live indicator yet — added with each signal's slice. (SPEC §1)
         }
     }
 
-    private func sustainedAlert(_ threshold: Threshold, _ samples: [MetricSample]) -> Alert? {
+    /// Fires when *every* sample in the trailing window breaches `threshold` on the value
+    /// at `measure` — the "sustained" breach shape shared by CPU spikes and network I/O.
+    private func sustainedAlert(
+        _ threshold: Threshold,
+        _ samples: [MetricSample],
+        measuring measure: (MetricSample) -> Double
+    ) -> Alert? {
         guard let window = trailingWindow(samples, threshold.window) else { return nil }
         let allBreach = window.samples.allSatisfy {
-            threshold.comparator.matches($0.cpuPercent, threshold.value)
+            threshold.comparator.matches(measure($0), threshold.value)
         }
         guard allBreach else { return nil }
         return Alert(signal: threshold.signal, severity: .warning, sample: window.latest)

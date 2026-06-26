@@ -77,4 +77,26 @@ struct MetricSampleTests {
         #expect(sample.residentBytes == 1_048_576)
         #expect(sample.threadCount == 9)
     }
+
+    // A freshly derived sample carries no network rate until one is attached. (PLAN slice 4)
+    @Test func derive_defaultsNetworkRateToZero() {
+        let sample = MetricSample.derive(from: reading(), to: reading(wallClockNanos: 1))
+
+        #expect(sample.netInBytesPerSec == 0)
+        #expect(sample.netOutBytesPerSec == 0)
+        #expect(sample.networkMegabytesPerSecond == 0)
+    }
+
+    // Attaching a network rate sets the in/out byte rates and surfaces their sum as MB/s,
+    // the figure the network threshold compares against. (PLAN slice 4; SPEC §3.3)
+    @Test func withNetwork_attachesRateAndSurfacesCombinedMegabytesPerSecond() {
+        let base = MetricSample.derive(from: reading(), to: reading(wallClockNanos: 1))
+        let rate = NetworkRate(inBytesPerSec: 4_000_000, outBytesPerSec: 2_000_000)
+
+        let sample = base.withNetwork(rate)
+
+        #expect(sample.netInBytesPerSec == 4_000_000)
+        #expect(sample.netOutBytesPerSec == 2_000_000)
+        #expect(sample.networkMegabytesPerSecond == 6)
+    }
 }

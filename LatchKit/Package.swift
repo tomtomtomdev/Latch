@@ -19,6 +19,10 @@ let package = Package(
         .target(name: "LatchDomain"),
         .target(name: "LatchData", dependencies: ["LatchDomain"]),
         .testTarget(name: "LatchDomainTests", dependencies: ["LatchDomain"]),
-        .testTarget(name: "LatchDataTests", dependencies: ["LatchData"]),
+        .testTarget(
+            name: "LatchDataTests",
+            dependencies: ["LatchData"],
+            resources: [.copy("Fixtures")]
+        ),
     ]
 )

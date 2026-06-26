@@ -17,36 +17,61 @@ final class VitalsModel {
     var latest: MetricSample? { samples.last }
 
     private let source: MetricsSource
+    private let networkSource: NetworkSource?
     private let pid: Int32
     private let capacity: Int
     private let evaluateThresholds = EvaluateThresholds()
     private var previousReading: VitalsReading?
+    private var previousNetworkReading: NetworkReading?
 
     /// `capacity` defaults to one hour of 1 Hz samples — the retention cap from SPEC §4.
+    /// `networkSource` is optional: without it, samples carry a zero network rate.
     init(
         source: MetricsSource,
+        networkSource: NetworkSource? = nil,
         pid: Int32,
         capacity: Int = 3600,
         thresholds: [Threshold] = Threshold.defaults
     ) {
         self.source = source
+        self.networkSource = networkSource
         self.pid = pid
         self.capacity = capacity
         self.thresholds = thresholds
     }
 
     /// One polling tick: read the target's vitals, derive a sample from the previous
-    /// reading, and append it. The first tick only establishes a baseline (no delta yet).
-    func poll() {
+    /// reading, attach the network throughput, and append it. The first tick only
+    /// establishes a baseline (no delta yet). The libproc read is authoritative for
+    /// liveness — its failure surfaces as an error and stops the tick; the network read is
+    /// best-effort and never clobbers that error.
+    func poll() async {
         do {
             let reading = try source.sample(pid: pid)
+            let networkRate = await sampleNetworkRate()
             if let previousReading {
-                append(MetricSample.derive(from: previousReading, to: reading))
+                let sample = MetricSample.derive(from: previousReading, to: reading)
+                append(sample.withNetwork(networkRate))
             }
             previousReading = reading
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Read the network counters and derive a rate from the previous reading. Best-effort:
+    /// no source, or a transient `nettop` failure, yields a zero rate rather than failing
+    /// the whole tick. (PLAN slice 4)
+    private func sampleNetworkRate() async -> NetworkRate {
+        guard let networkSource else { return .zero }
+        do {
+            let reading = try await networkSource.sample(pid: pid)
+            defer { previousNetworkReading = reading }
+            guard let previousNetworkReading else { return .zero }
+            return NetworkRate.derive(from: previousNetworkReading, to: reading)
+        } catch {
+            return .zero
         }
     }
 

@@ -13,7 +13,11 @@ struct VitalsView: View {
 
     init(target: Target) {
         self.target = target
-        _model = State(initialValue: VitalsModel(source: LibprocMetricsSource(), pid: target.pid ?? -1))
+        _model = State(initialValue: VitalsModel(
+            source: LibprocMetricsSource(),
+            networkSource: NettopMetricsSource(commandRunner: ProcessCommandRunner()),
+            pid: target.pid ?? -1
+        ))
     }
 
     var body: some View {
@@ -28,6 +32,7 @@ struct VitalsView: View {
                 alertBanners
                 cpuChart
                 memoryChart
+                networkChart
             }
             .padding()
         }
@@ -69,6 +74,9 @@ struct VitalsView: View {
         case .memoryLeak:
             let mb = alert.sample.physFootprintMegabytes
             return String(format: "Possible leak — footprint rising (%.1f MB)", mb)
+        case .networkIO:
+            let mbps = alert.sample.networkMegabytesPerSecond
+            return String(format: "High network I/O — %.1f MB/s, sustained", mbps)
         default:
             return "\(alert.signal.title) threshold breached"
         }
@@ -76,7 +84,7 @@ struct VitalsView: View {
 
     private func pollLoop() async {
         while !Task.isCancelled {
-            model.poll()
+            await model.poll()
             try? await Task.sleep(for: .seconds(1))
         }
     }
@@ -86,10 +94,16 @@ struct VitalsView: View {
             if let pid = target.pid {
                 stat("PID", "\(pid)")
             }
-            stat("CPU", model.latest.map { String(format: "%.0f%%", $0.cpuPercent) } ?? "—")
-            stat("Memory", model.latest.map { String(format: "%.1f MB", $0.physFootprintMegabytes) } ?? "—")
-            stat("Threads", model.latest.map { "\($0.threadCount)" } ?? "—")
+            stat("CPU", latest { String(format: "%.0f%%", $0.cpuPercent) })
+            stat("Memory", latest { String(format: "%.1f MB", $0.physFootprintMegabytes) })
+            stat("Threads", latest { "\($0.threadCount)" })
+            stat("Network", latest { String(format: "%.2f MB/s", $0.networkMegabytesPerSecond) })
         }
+    }
+
+    /// Format the latest sample, or an em-dash when no sample has been polled yet.
+    private func latest(_ format: (MetricSample) -> String) -> String {
+        model.latest.map(format) ?? "—"
     }
 
     private func stat(_ label: String, _ value: String) -> some View {
@@ -105,6 +119,10 @@ struct VitalsView: View {
 
     private var memoryChart: some View {
         lineChart(title: "Memory — footprint (MB)", color: .green) { $0.physFootprintMegabytes }
+    }
+
+    private var networkChart: some View {
+        lineChart(title: "Network — throughput (MB/s)", color: .purple) { $0.networkMegabytesPerSecond }
     }
 
     private func lineChart(
@@ -187,6 +205,7 @@ private struct ThresholdSettingsView: View {
         switch signal {
         case .cpuSpike: "CPU spike above"
         case .memoryLeak: "Footprint rising over"
+        case .networkIO: "Network I/O above"
         default: signal.title
         }
     }
@@ -195,6 +214,7 @@ private struct ThresholdSettingsView: View {
         switch signal {
         case .cpuSpike: "% core"
         case .memoryLeak: "MB/min"
+        case .networkIO: "MB/s"
         default: ""
         }
     }
@@ -203,6 +223,7 @@ private struct ThresholdSettingsView: View {
         switch signal {
         case .cpuSpike: 10...400
         case .memoryLeak: 1...100
+        case .networkIO: 1...100
         default: 0...100
         }
     }
