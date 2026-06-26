@@ -1,0 +1,33 @@
+Process 12345 is not debuggable. Due to security restrictions, leaks can only show or save contents of readonly memory of restricted processes.
+
+Process:         leaker [12345]
+Path:            /private/tmp/leaker
+Load Address:    0x10263c000
+Identifier:      leaker
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  zsh [999]
+Target Type:     live task
+
+Date/Time:       2026-06-26 21:06:08.578 +0700
+Launch Time:     2026-06-26 21:06:07.390 +0700
+OS Version:      macOS 26.2 (25C56)
+Report Version:  7
+Analysis Tool:   /Applications/Xcode.app/Contents/Developer/usr/bin/leaks
+Analysis Tool Version:  Xcode 26.5 (17F42)
+
+Physical footprint:         833K
+Physical footprint (peak):  865K
+Idle exit:                  untracked
+----
+
+leaks Report Version: 4.0
+Process 12345: 189 nodes malloced for 11 KB
+Process 12345: 4 leaks for 416 total leaked bytes.
+
+    4 (416 bytes) << TOTAL >>
+      1 (128 bytes) ROOT LEAK: 0x102d29b60 [128]
+      1 (128 bytes) ROOT LEAK: 0x102d2a0d0 [128]
+      1 (128 bytes) ROOT LEAK: 0x102d2a150 [128]
+      1 (32 bytes) ROOT LEAK: 0xb6ec00940 [32]

@@ -13,7 +13,7 @@ to the decision log when a non-obvious choice is made. Never delete history.
 | 3 | Thresholds & alerting | ✅ Done | §3.3, §4 | Domain `Comparator`/`Threshold`(+`defaults`)/`Alert`/`AlertSeverity` + pure `EvaluateThresholds` (sustained CPU breach + least-squares footprint-rise leak hint); `VitalsModel` recomputes active alerts per tick + per-target `updateThreshold`; UI signal pills (honest `unavailable` for non-live signals), alert banners, threshold-tuning popover |
 | 4 | Network I/O | ✅ Done | §3.2, §3.3 | Domain `NetworkReading`(raw cumulative bytes)+`NetworkRate`(pure `derive` rate math, guards zero-interval/rewind)+`NetworkSource` port; `MetricSample` grew net rate fields + `withNetwork` + `networkMegabytesPerSecond` (decimal MB); `.networkIO` default (>5 MB/s, 5 s) via generalized sustained eval; `NettopMetricsSource` parses `nettop -P -L 1 -J …` CSV over `CommandRunner` (committed fixtures); `VitalsModel.poll()` now async, composes best-effort network rate onto each sample; net pill live + throughput chart |
 | 5 | Energy / battery | ✅ Done | §1, §5 | Domain `VitalsReading.energyNanojoules` (`ri_energy_nj`, verified) + `MetricSample.energyWatts` (pure Δnj/Δns power estimate via extracted `rate`); `.battery` default (>5 W sustained 5 s) through generalized `sustainedAlert`; `EnergySource` port + `EnergyMeasurementError`; `PowermetricsSource` parses `powermetrics --samplers tasks --show-process-energy -f plist` (⚠️ synthesized fixture, needs live-root validation); `VitalsModel.measureEnergy()` on-demand measured read degrades to estimate; UI energy section (estimate W + Measure button + measured impact + honest degrade label), battery pill live, threshold row |
-| 6 | Leaks (attach) | ⬜ Not started | §1 | MallocStackLogging caveat |
+| 6 | Leaks (attach) | ✅ Done | §1, §3.1, §3.2, §4 | Domain `DiagnosticKind`/`DiagnosticRunner`/`DiagnosticResult`/`Finding`/`DiagnosticOptions`/`DiagnosticError`; `LeaksCLIRunner` (`leaks <pid>`) fully TDD'd vs real captured fixtures (0-leaks / with-stacks / no-stacks caveat / error); `XctraceDiagnosticRunner` records the verified Leaks trace + returns `.trace` path (export parser **deferred** — entitlement wall, chosen with user); `VitalsModel.checkLeaks()`/`recordLeakTrace()` + Leaks UI section (findings, MallocStackLogging caveat, Open in Instruments) |
 | 7 | Zombies (relaunch) | ⬜ Not started | §1 | relaunch-only |
 | 8 | Hitches & hangs | ⬜ Not started | §3.3 | — |
 | 9 | iOS device support | ⬜ Not started | §1 | dev-signed only |
@@ -28,6 +28,22 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
 - ⚠️ **The `powermetrics` plist fixture is synthesized from `man powermetrics`, not captured live** (capturing needs root; Latch never runs silent `sudo`). The `tasks`/`energy_impact` plist shape is an assumption that MUST be validated against a real privileged run in the manual integration smoke before the measured-energy path is trusted in production. (SPEC §6, §7; Slice 5)
 - No privileged escalation path yet: `PowermetricsSource` runs through the plain `ProcessCommandRunner`, so measured energy only works if Latch itself runs as root; otherwise it degrades. An `SMAppService`/authorization helper is deferred. (SPEC §5, Slice 5)
 - iOS limited to development-signed apps on connected devices. (SPEC §1, Slice 9)
+- ⚠️ **The `xctrace` Leaks export parser is deferred.** `XctraceDiagnosticRunner` records the
+  verified trace and returns its `.trace` path (open in Instruments) but does **not** parse
+  `xctrace export` into `Finding`s. The deep `--attach` needs the debugger entitlement to
+  acquire the task port — verified failing from the unentitled CLI ("Unable to acquire required
+  task port"), so a real export fixture cannot be captured here, and the export XML schema is
+  version-specific/undocumented. Validate + build the export parser from the entitled app in the
+  manual smoke before relying on it. Slices 7 (Zombies) and 8 (Hitches) hit the same wall. (SPEC §1, §6; Slice 6)
+- The quick `leaks <pid>` path **does** attach to same-UID processes (it scans malloc zones
+  without the full task port), so it works where `xctrace`'s deep attach needs the entitlement —
+  it is Latch's reliable live leak-check path. Backtraces still require the target launched with
+  `MallocStackLogging`; the UI says so when they're absent. (SPEC §1, Slice 6)
+- Local SwiftLint 0.59.1 `--strict` reports ~25 repo-wide violations (trailing_comma,
+  identifier_name `i`/`n`, empty_count, static_over_final_class, optional_data_string_conversion)
+  in files that landed lint-clean in earlier slices — a SwiftLint-version drift, **not** a
+  slice-6 regression. Slice 6's new files add only convention-matching trailing commas (mirroring
+  `PowermetricsSource` etc.). Worth a separate lint-baseline cleanup (pin the CI swiftlint version).
 - Apple APIs/man pages must be verified against current docs, not memory. (SPEC §7)
 
 ## Decision log
@@ -61,8 +77,40 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
 | 2026-06-26 | Energy alerting runs on the **estimate** (watts), always-available & single-unit; measured powermetrics impact is a display-only upgrade | Measured "energy impact" is a unitless proxy on a different scale from estimated watts; one `Threshold.value` can't sensibly compare both. SPEC §3.3 reads "'high' tier … *or* estimate slope" — the estimate slope (watts is the slope of cumulative energy) is the honest, consistent live signal. `.battery` reuses the generalized `sustainedAlert` (no new eval shape) |
 | 2026-06-26 | Measured energy is an **on-demand** `VitalsModel.measureEnergy()`, not per-tick | `powermetrics` is heavy and root-gated — running it on the 1 Hz loop is wrong. The estimate rides every tick (free, from the same rusage call); the measured read is the SPEC §1 "deep run" mode, triggered by a user action, and degrades to the estimate (sets `energyMessage`) when unprivileged |
 | 2026-06-26 | Slice 5 builds the parser + degrade + estimate; the privileged-escalation helper is deferred (chosen with the user) | `PowermetricsSource` sits behind `CommandRunner` so a future privileged runner (`SMAppService`/authorization) drops in without touching the adapter. The powermetrics plist fixture is **synthesized from `man powermetrics`** (root-only tool; no silent `sudo`) and flagged for live validation in the manual smoke (SPEC §6) — the `energy_impact` key name is an unverified assumption |
+| 2026-06-26 | Slice 6 ships the `leaks` CLI runner fully; the `xctrace` Leaks **export parser is deferred** (chosen with the user) | The deep `xctrace record --attach` needs the `com.apple.security.cs.debugger` entitlement to acquire the task port — verified **failing** from the unentitled CLI ("Unable to acquire required task port"), so a real export fixture can't be captured here, and the `xctrace export` XML schema is version-specific/undocumented. Per SPEC §7 (verify-then-use) and §1 (no fake capabilities), `XctraceDiagnosticRunner` records the verified trace + returns the `.trace` path for Instruments; automated export parsing is validated in the manual smoke (SPEC §6). The `leaks <pid>` quick runner is the verifiable live path this slice — it attaches via malloc-zone scan without the task port |
+| 2026-06-26 | `leaks` text parsing lives in the Data adapter (`LeaksCLIRunner`); findings come from `STACK OF` groups when backtraces exist, else from flat `ROOT LEAK:` lines | `leaks` output differs with/without launch-time `MallocStackLogging` (both shapes captured live on macOS 26.2 / Xcode 16 as committed fixtures): grouped stacks (title + instance count + backtrace + group bytes) vs address-only blocks. `DiagnosticResult.hasBacktraces` (a finding carries a stack) drives the UI's MallocStackLogging caveat. Exit codes 0 (none) and 1 (found) both parse; >1 throws `DiagnosticError.toolFailed` (verified vs `man leaks`) |
+| 2026-06-26 | Regex literals in `LeaksCLIRunner` are declared **function-local**, not `static let` | Swift 6 strict concurrency: `Regex` is not `Sendable`, so a shared `static let` Regex is a `#MutableGlobalVariable` concurrency error. Each pattern is used in one place, so a local `let` is both correct and clean |
+| 2026-06-26 | `VitalsModel` stores the full `Target` (optional) alongside `pid` for the deep runners | `DiagnosticRunner.run(_:options:)` attaches by `Target` (SPEC §3.1) while live polling needs only `pid`; adding an optional `target` is the thinnest change that keeps the existing pid-based polling tests untouched. `runDiagnostic` extracted (Fowler: Extract Function + Parameterize Function) so `checkLeaks`/`recordLeakTrace` differ only in which fields they write — same move as slice 4's `sustainedAlert` |
 
 ## Changelog
+- 2026-06-26 — **Slice 6 (Leaks — deep, on-demand attach) landed.** Domain gained the deep-run
+  vocabulary: `DiagnosticKind` (`.leaks` only — others land with their slices), the
+  `DiagnosticRunner` port (`kind`/`requiresRelaunch`/`run(_:options:)`), `DiagnosticResult`
+  (`summary` + `[Finding]` + optional `tracePath`, with `hasBacktraces`/`hasFindings`), `Finding`
+  (title / byteCount / instanceCount / backtrace), `DiagnosticOptions` (`timeLimit`), and
+  `DiagnosticError` (`.toolFailed`/`.targetHasNoPID`). Data gained two adapters behind
+  `CommandRunner`: `LeaksCLIRunner` runs `leaks <pid>` and parses the real output — grouped
+  `STACK OF … INSTANCES OF '…'` blocks (with backtraces) when MallocStackLogging is set, flat
+  `ROOT LEAK:` blocks otherwise — into findings, treating exit 0/1 as parseable and >1 as a
+  thrown tool error; `XctraceDiagnosticRunner` runs the **verified** `xcrun xctrace record
+  --template Leaks --attach <pid> --time-limit Ns --output <…>.trace` and returns the `.trace`
+  path. Presentation: `@MainActor @Observable VitalsModel` gained on-demand `checkLeaks()` and
+  `recordLeakTrace()` (shared `runDiagnostic` helper, busy flag, honest failure messages) plus
+  `canCheckLeaks`/`canRecordTrace`; `VitalsView` gained a Leaks section — "Run Leak Check"
+  (findings list + summary + the MallocStackLogging caveat when backtraces are absent) and
+  "Record Trace" → "Open in Instruments". TDD red-first: Domain `DiagnosticResultTests`
+  (hasBacktraces / hasFindings); Data `LeaksCLIRunnerTests` (no-leaks / grouped-with-backtraces /
+  no-stacks caveat / exit>1 throws / exact command / no-pid) against **real captured, sanitized**
+  fixtures (`leaks-none`, `leaks-with-stacks`, `leaks-without-stacks`); Data
+  `XctraceDiagnosticRunnerTests` (exact command + trace path / attach-failure throws /
+  requiresRelaunch false); Presentation `VitalsModelLeakCheckTests` (report stored / failure
+  message / trace path / availability) via `FakeDiagnosticRunner`. Refactor on green: Extract
+  Function + Parameterize Function (`runDiagnostic`), regex literals made function-local for
+  Swift 6 `Sendable`. `swift test` green (57/57), `xcodebuild test` green (app + UI), zero
+  compiler/concurrency warnings.
+  ⚠️ The `xctrace` Leaks **export parser is deferred** (entitlement wall blocks capturing a real
+  export fixture; schema is version-specific) — see the slice-6 decision log + live-risk note;
+  build + validate it from the entitled app in the manual smoke. Slices 7/8 hit the same wall.
 - 2026-06-26 — **Slice 5 (Energy / battery) landed.** Domain: `VitalsReading` grew
   `energyNanojoules` (`ri_energy_nj`, verified on-machine as cumulative process energy that
   grows with CPU work — chosen over SPEC's original `ri_billed_energy`, which is cross-process

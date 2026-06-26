@@ -19,14 +19,33 @@ final class VitalsModel {
     /// Why the measured-energy read is unavailable (e.g. needs root), shown beside the
     /// estimate so the degrade is honest rather than silent. (SPEC §1, §5)
     private(set) var energyMessage: String?
+    /// The most recent leak-check result (`leaks` CLI findings + summary), or `nil` until a
+    /// check is run. (SPEC §1; PLAN slice 6)
+    private(set) var leakReport: DiagnosticResult?
+    /// Why the last leak check could not complete (target exited, etc.), shown instead of a
+    /// stale report. (SPEC §1)
+    private(set) var leakMessage: String?
+    /// The most recent recorded deep trace, carrying the `.trace` path to open in Instruments.
+    private(set) var traceResult: DiagnosticResult?
+    /// Why the last trace recording failed (commonly the debugger-entitlement task-port wall).
+    private(set) var traceMessage: String?
+    /// Whether a deep leak diagnostic (check or trace) is in flight — drives a progress spinner.
+    private(set) var isRunningLeakDiagnostic = false
 
     var latest: MetricSample? { samples.last }
     /// Whether an on-demand measured-energy read is wired for this target. (SPEC §5)
     var canMeasureEnergy: Bool { energySource != nil }
+    /// Whether a quick leak check (`leaks` CLI) is wired for this target. (SPEC §1; PLAN slice 6)
+    var canCheckLeaks: Bool { leakChecker != nil && target != nil }
+    /// Whether a deep trace recording (`xctrace`) is wired for this target. (PLAN slice 6)
+    var canRecordTrace: Bool { traceRecorder != nil && target != nil }
 
     private let source: MetricsSource
     private let networkSource: NetworkSource?
     private let energySource: EnergySource?
+    private let leakChecker: DiagnosticRunner?
+    private let traceRecorder: DiagnosticRunner?
+    private let target: Target?
     private let pid: Int32
     private let capacity: Int
     private let evaluateThresholds = EvaluateThresholds()
@@ -34,12 +53,16 @@ final class VitalsModel {
     private var previousNetworkReading: NetworkReading?
 
     /// `capacity` defaults to one hour of 1 Hz samples — the retention cap from SPEC §4.
-    /// `networkSource` and `energySource` are optional: without them, samples carry a zero
-    /// network rate and measured energy is unavailable (the estimate still rides each tick).
+    /// `networkSource`, `energySource`, and the diagnostic runners are optional: without them
+    /// the corresponding signal/action is unavailable (the live estimate still rides each
+    /// tick). The deep runners take the full `target` because they attach by it. (SPEC §3.1)
     init(
         source: MetricsSource,
         networkSource: NetworkSource? = nil,
         energySource: EnergySource? = nil,
+        leakChecker: DiagnosticRunner? = nil,
+        traceRecorder: DiagnosticRunner? = nil,
+        target: Target? = nil,
         pid: Int32,
         capacity: Int = 3600,
         thresholds: [Threshold] = Threshold.defaults
@@ -47,6 +70,9 @@ final class VitalsModel {
         self.source = source
         self.networkSource = networkSource
         self.energySource = energySource
+        self.leakChecker = leakChecker
+        self.traceRecorder = traceRecorder
+        self.target = target
         self.pid = pid
         self.capacity = capacity
         self.thresholds = thresholds
@@ -103,6 +129,56 @@ final class VitalsModel {
             measuredEnergy = nil
             energyMessage = "Measured energy unavailable — showing the estimate."
         }
+    }
+
+    /// Run a quick leak check (`leaks <pid>`) on demand and store the findings. This is the
+    /// fast attach path (SPEC §1's deep-run mode, light end): it scans malloc zones without the
+    /// full task port. A failure surfaces as `leakMessage` rather than a stale report. (PLAN slice 6)
+    func checkLeaks() async {
+        await runDiagnostic(
+            leakChecker, failureLabel: "Leak check",
+            onSuccess: { self.leakReport = $0; self.leakMessage = nil },
+            onFailure: { self.leakReport = nil; self.leakMessage = $0 }
+        )
+    }
+
+    /// Record a deep Leaks trace via `xctrace` and store its `.trace` path for opening in
+    /// Instruments. The deep attach needs the debugger entitlement; if it can't acquire the
+    /// task port the failure is reported honestly via `traceMessage`. (SPEC §1, §5; PLAN slice 6)
+    func recordLeakTrace() async {
+        await runDiagnostic(
+            traceRecorder, failureLabel: "Trace recording",
+            onSuccess: { self.traceResult = $0; self.traceMessage = nil },
+            onFailure: { self.traceResult = nil; self.traceMessage = $0 }
+        )
+    }
+
+    /// Run a deep diagnostic on the latched target behind the shared busy flag, routing its
+    /// result or failure message to the caller's storage. The two leak actions differ only in
+    /// which fields they write, so the run/guard/error shape lives here once. (Fowler: Extract
+    /// Function + Parameterize Function)
+    private func runDiagnostic(
+        _ runner: DiagnosticRunner?,
+        failureLabel: String,
+        onSuccess: (DiagnosticResult) -> Void,
+        onFailure: (String) -> Void
+    ) async {
+        guard let runner, let target else { return }
+        isRunningLeakDiagnostic = true
+        defer { isRunningLeakDiagnostic = false }
+        do {
+            onSuccess(try await runner.run(target, options: DiagnosticOptions()))
+        } catch {
+            onFailure("\(failureLabel) failed — \(diagnosticFailureReason(error))")
+        }
+    }
+
+    /// Human-readable reason for a diagnostic failure, preferring the tool's own stderr.
+    private func diagnosticFailureReason(_ error: Error) -> String {
+        if case let DiagnosticError.toolFailed(_, message) = error, !message.isEmpty {
+            return message
+        }
+        return error.localizedDescription
     }
 
     /// Override one signal's threshold value (per-target tuning) and re-evaluate the

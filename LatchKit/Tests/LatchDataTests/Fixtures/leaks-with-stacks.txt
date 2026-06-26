@@ -1,0 +1,57 @@
+leaks(12346) MallocStackLogging: process is not in a debuggable environment; unsetting MallocStackLoggingDirectory environment variable
+leaks(12346) MallocStackLogging: recording malloc (and VM allocation) stacks using lite mode
+Process 12345 is not debuggable. Due to security restrictions, leaks can only show or save contents of readonly memory of restricted processes.
+
+Process:         leaker [12345]
+Path:            /private/tmp/leaker
+Load Address:    0x1041b4000
+Identifier:      leaker
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  zsh [999]
+Target Type:     live task
+
+Date/Time:       2026-06-26 20:59:31.357 +0700
+Launch Time:     2026-06-26 20:59:30.174 +0700
+OS Version:      macOS 26.2 (25C56)
+Report Version:  7
+Analysis Tool:   /Applications/Xcode.app/Contents/Developer/usr/bin/leaks
+Analysis Tool Version:  Xcode 26.5 (17F42)
+
+Physical footprint:         1665K
+Physical footprint (peak):  1665K
+Idle exit:                  untracked
+----
+
+leaks Report Version: 4.0, multi-line stacks
+Process 12345: 191 nodes malloced for 12 KB
+Process 12345: 4 leaks for 512 total leaked bytes.
+
+STACK OF 3 INSTANCES OF 'ROOT LEAK: <malloc in make_leak>':
+3   dyld                                  0x186509d54 start + 7184
+2   leaker                                0x1041b4490 main + 48  leaker.c:20
+1   leaker                                0x1041b44d8 make_leak + 24  leaker.c:7
+0   libsystem_malloc.dylib                0x1866fdf44 _malloc_zone_malloc_instrumented_or_legacy + 152
+====
+    3 (480 bytes) << TOTAL >>
+      1 (160 bytes) ROOT LEAK: <malloc in make_leak 0xa60c08000> [160]
+      1 (160 bytes) ROOT LEAK: <malloc in make_leak 0xa60c080a0> [160]
+      1 (160 bytes) ROOT LEAK: <malloc in make_leak 0xa60c08140> [160]
+
+STACK OF 1 INSTANCE OF 'ROOT LEAK: <malloc in leak_a_string>':
+5   dyld                                  0x186509d54 start + 7184
+4   leaker                                0x1041b44a8 main + 72  leaker.c:22
+3   leaker                                0x1041b4518 leak_a_string + 24  leaker.c:13
+2   libsystem_c.dylib                     0x18675e590 strdup + 44
+1   libsystem_malloc.dylib                0x1866e57d8 _malloc + 88
+0   libsystem_malloc.dylib                0x1866fdf44 _malloc_zone_malloc_instrumented_or_legacy + 152
+====
+    1 (32 bytes) ROOT LEAK: <malloc in leak_a_string 0xa60c0c000> [32]
+
+
+
+Binary Images:
+       0x1041b4000 -        0x1041b45c3 +leaker (0) <B96FE304-2941-47E4-97A6-05F70ACDB209> /tmp/leaker
+       0x18647c000 -        0x1864cf48b  libobjc.A.dylib (951.1) <1E0A4B36-0701-3482-AA51-000F0ECC7506> /usr/lib/libobjc.A.dylib
+       0x1866c7000 -        0x186712bff  libsystem_malloc.dylib (792.60.6) <F68E01CC-EC92-3F25-BAC8-956A3DE42627> /usr/lib/system/libsystem_malloc.dylib

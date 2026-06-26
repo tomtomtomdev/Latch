@@ -1,0 +1,27 @@
+Process 12345 is not debuggable. Due to security restrictions, leaks can only show or save contents of readonly memory of restricted processes.
+
+Process:         sleep [12345]
+Path:            /bin/sleep
+Load Address:    0x104ca0000
+Identifier:      sleep
+Version:         326
+Code Type:       ARM64E
+Platform:        macOS
+Parent Process:  zsh [999]
+Target Type:     live task
+
+Date/Time:       2026-06-26 20:59:07.975 +0700
+Launch Time:     2026-06-26 20:59:06.780 +0700
+OS Version:      macOS 26.2 (25C56)
+Report Version:  7
+Analysis Tool:   /Applications/Xcode.app/Contents/Developer/usr/bin/leaks
+Analysis Tool Version:  Xcode 26.5 (17F42)
+
+Physical footprint:         800K
+Physical footprint (peak):  832K
+Idle exit:                  untracked
+----
+
+leaks Report Version: 4.0
+Process 12345: 185 nodes malloced for 12 KB
+Process 12345: 0 leaks for 0 total leaked bytes.

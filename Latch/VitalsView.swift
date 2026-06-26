@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import Charts
 import LatchDomain
 import LatchData
@@ -13,10 +14,17 @@ struct VitalsView: View {
 
     init(target: Target) {
         self.target = target
+        let runner = ProcessCommandRunner()
         _model = State(initialValue: VitalsModel(
             source: LibprocMetricsSource(),
-            networkSource: NettopMetricsSource(commandRunner: ProcessCommandRunner()),
-            energySource: PowermetricsSource(commandRunner: ProcessCommandRunner()),
+            networkSource: NettopMetricsSource(commandRunner: runner),
+            energySource: PowermetricsSource(commandRunner: runner),
+            leakChecker: LeaksCLIRunner(commandRunner: runner),
+            traceRecorder: XctraceDiagnosticRunner(
+                commandRunner: runner,
+                outputDirectory: FileManager.default.temporaryDirectory.path
+            ),
+            target: target,
             pid: target.pid ?? -1
         ))
     }
@@ -35,6 +43,7 @@ struct VitalsView: View {
                 memoryChart
                 networkChart
                 energySection
+                leaksSection
             }
             .padding()
         }
@@ -113,6 +122,86 @@ struct VitalsView: View {
                     .foregroundStyle(.orange)
             }
         }
+    }
+
+    /// Leaks: an on-demand deep run, distinct from the live signals above. "Run Leak Check"
+    /// attaches with `leaks` for a quick findings list; "Record Trace" captures an `xctrace`
+    /// Leaks trace to open in Instruments. Backtraces (the *where*) need launch-time
+    /// MallocStackLogging — surfaced honestly when they are absent. (SPEC §1; PLAN slice 6)
+    @ViewBuilder private var leaksSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Leaks").font(.headline)
+            HStack(spacing: 12) {
+                if model.canCheckLeaks {
+                    Button("Run Leak Check", systemImage: "magnifyingglass") {
+                        Task { await model.checkLeaks() }
+                    }
+                }
+                if model.canRecordTrace {
+                    Button("Record Trace", systemImage: "record.circle") {
+                        Task { await model.recordLeakTrace() }
+                    }
+                }
+                if model.isRunningLeakDiagnostic { ProgressView().controlSize(.small) }
+            }
+            .disabled(model.isRunningLeakDiagnostic)
+            Text("Leak check attaches with leaks (no relaunch). Backtraces need the target "
+                + "launched with MallocStackLogging; a deep trace opens in Instruments.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let report = model.leakReport { leakReport(report) }
+            if let message = model.leakMessage { caveat(message, icon: "exclamationmark.triangle") }
+            if let path = model.traceResult?.tracePath { traceRow(path) }
+            if let message = model.traceMessage { caveat(message, icon: "lock.fill") }
+        }
+    }
+
+    @ViewBuilder private func leakReport(_ report: DiagnosticResult) -> some View {
+        Text(report.summary)
+            .font(.callout.weight(.medium))
+            .foregroundStyle(report.hasFindings ? .red : .green)
+        if report.hasFindings && !report.hasBacktraces {
+            caveat(
+                "No backtraces — relaunch the target with MallocStackLogging=1 to see where "
+                    + "leaks were allocated.",
+                icon: "info.circle"
+            )
+        }
+        ForEach(Array(report.findings.enumerated()), id: \.offset) { _, finding in
+            leakFinding(finding)
+        }
+    }
+
+    private func leakFinding(_ finding: Finding) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(finding.title).font(.callout).textSelection(.enabled)
+            Text("\(finding.instanceCount)× · \(finding.byteCount) bytes")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(Array(finding.backtrace.enumerated()), id: \.offset) { _, frame in
+                Text(frame).font(.caption2).monospaced().foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func traceRow(_ path: String) -> some View {
+        HStack(spacing: 8) {
+            Label(path, systemImage: "doc.badge.gearshape")
+                .font(.caption)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Button("Open in Instruments", systemImage: "arrow.up.forward.app") {
+                NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            }
+            .controlSize(.small)
+        }
+    }
+
+    private func caveat(_ message: String, icon: String) -> some View {
+        Label(message, systemImage: icon)
+            .font(.caption)
+            .foregroundStyle(.orange)
     }
 
     private func pollLoop() async {
