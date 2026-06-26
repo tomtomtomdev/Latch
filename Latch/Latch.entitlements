@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Permits acquiring task ports of same-UID processes for inspection.
+	     App Sandbox is intentionally absent: it is incompatible with task_for_pid
+	     on arbitrary same-UID pids. (SPEC §1, §5; skill: code-signing-entitlements) -->
+	<key>com.apple.security.cs.debugger</key>
+	<true/>
+</dict>
+</plist>

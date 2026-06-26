@@ -1,0 +1,33 @@
+# SwiftLint config for Latch. Lint runs in CI and locally (skill: clean-code).
+included:
+  - LatchKit/Sources
+  - LatchKit/Tests
+  - Latch
+  - LatchTests
+  - LatchUITests
+excluded:
+  - LatchKit/.build
+  - "**/.build"
+
+opt_in_rules:
+  - empty_count
+  - explicit_init
+  - first_where
+  - force_unwrapping
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - toggle_bool
+  - unused_import
+
+line_length:
+  warning: 110
+  error: 140
+  ignores_comments: true
+
+identifier_name:
+  min_length: 2          # allow short locals like `id`, `os`
+  excluded: [id, pid, ok]
+
+force_cast: error
+force_try: error
+force_unwrapping: error  # SPEC §6: adapters/heuristics must not crash on bad input
