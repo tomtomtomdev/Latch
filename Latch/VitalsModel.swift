@@ -29,8 +29,14 @@ final class VitalsModel {
     private(set) var traceResult: DiagnosticResult?
     /// Why the last trace recording failed (commonly the debugger-entitlement task-port wall).
     private(set) var traceMessage: String?
-    /// Whether a deep leak diagnostic (check or trace) is in flight — drives a progress spinner.
-    private(set) var isRunningLeakDiagnostic = false
+    /// The most recent zombie-check result (findings from a relaunch under `NSZombieEnabled`),
+    /// or `nil` until a check is run. (SPEC §1; PLAN slice 7)
+    private(set) var zombieReport: DiagnosticResult?
+    /// Why the last zombie check could not complete (couldn't relaunch the executable, etc.).
+    private(set) var zombieMessage: String?
+    /// Whether any on-demand deep diagnostic (leak check, trace recording, or zombie check) is
+    /// in flight — drives the progress spinner shared by those actions.
+    private(set) var isRunningDiagnostic = false
 
     var latest: MetricSample? { samples.last }
     /// Whether an on-demand measured-energy read is wired for this target. (SPEC §5)
@@ -39,12 +45,17 @@ final class VitalsModel {
     var canCheckLeaks: Bool { leakChecker != nil && target != nil }
     /// Whether a deep trace recording (`xctrace`) is wired for this target. (PLAN slice 6)
     var canRecordTrace: Bool { traceRecorder != nil && target != nil }
+    /// Whether a zombie check is wired for this target. Requires both a runner and an
+    /// executable path to relaunch — zombies cannot attach to the running process, so without
+    /// a path there is nothing to relaunch and the action is hidden. (SPEC §1; PLAN slice 7)
+    var canCheckZombies: Bool { zombieRunner != nil && target?.executablePath != nil }
 
     private let source: MetricsSource
     private let networkSource: NetworkSource?
     private let energySource: EnergySource?
     private let leakChecker: DiagnosticRunner?
     private let traceRecorder: DiagnosticRunner?
+    private let zombieRunner: DiagnosticRunner?
     private let target: Target?
     private let pid: Int32
     private let capacity: Int
@@ -62,6 +73,7 @@ final class VitalsModel {
         energySource: EnergySource? = nil,
         leakChecker: DiagnosticRunner? = nil,
         traceRecorder: DiagnosticRunner? = nil,
+        zombieRunner: DiagnosticRunner? = nil,
         target: Target? = nil,
         pid: Int32,
         capacity: Int = 3600,
@@ -72,6 +84,7 @@ final class VitalsModel {
         self.energySource = energySource
         self.leakChecker = leakChecker
         self.traceRecorder = traceRecorder
+        self.zombieRunner = zombieRunner
         self.target = target
         self.pid = pid
         self.capacity = capacity
@@ -153,6 +166,18 @@ final class VitalsModel {
         )
     }
 
+    /// Check for over-released objects by relaunching the target under `NSZombieEnabled` and
+    /// storing any findings. Zombies cannot be detected on the running process — this starts a
+    /// fresh instance (SPEC §1's relaunch-only constraint); a failure to relaunch surfaces as
+    /// `zombieMessage` rather than a stale report. (PLAN slice 7)
+    func checkZombies() async {
+        await runDiagnostic(
+            zombieRunner, failureLabel: "Zombie check",
+            onSuccess: { self.zombieReport = $0; self.zombieMessage = nil },
+            onFailure: { self.zombieReport = nil; self.zombieMessage = $0 }
+        )
+    }
+
     /// Run a deep diagnostic on the latched target behind the shared busy flag, routing its
     /// result or failure message to the caller's storage. The two leak actions differ only in
     /// which fields they write, so the run/guard/error shape lives here once. (Fowler: Extract
@@ -164,8 +189,8 @@ final class VitalsModel {
         onFailure: (String) -> Void
     ) async {
         guard let runner, let target else { return }
-        isRunningLeakDiagnostic = true
-        defer { isRunningLeakDiagnostic = false }
+        isRunningDiagnostic = true
+        defer { isRunningDiagnostic = false }
         do {
             onSuccess(try await runner.run(target, options: DiagnosticOptions()))
         } catch {

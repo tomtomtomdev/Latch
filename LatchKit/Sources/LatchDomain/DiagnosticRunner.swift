@@ -31,4 +31,7 @@ public enum DiagnosticError: Error, Equatable {
     case toolFailed(exitCode: Int32, message: String)
     /// The target carries no pid to attach to (should not happen for a local mac process).
     case targetHasNoPID
+    /// The target carries no executable path to relaunch — required by relaunch-only
+    /// diagnostics like Zombies, which cannot attach to the running process. (SPEC §1)
+    case targetHasNoExecutablePath
 }

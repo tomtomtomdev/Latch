@@ -4,7 +4,8 @@ import LatchDomain
 
 struct LibprocTargetDiscoveryTests {
     // Slice 1: enumerated entries map to local-Mac targets, deriving a display name
-    // from the executable's last path component and carrying the pid. (PLAN slice 1)
+    // from the executable's last path component and carrying the pid. The full executable
+    // path rides along too — the Zombies relaunch needs it. (PLAN slice 1, slice 7)
     @Test func localProcesses_mapsEntriesToLocalMacTargets() async throws {
         let lister = FakeProcessLister(currentUID: 501, entries: [
             ProcessEntry(pid: 42, uid: 501, executablePath: "/usr/bin/foo"),
@@ -16,6 +17,9 @@ struct LibprocTargetDiscoveryTests {
 
         #expect(targets.map(\.pid) == [42, 73])
         #expect(targets.map(\.displayName) == ["foo", "Bar"])
+        #expect(targets.map(\.executablePath) == [
+            "/usr/bin/foo", "/Applications/Bar.app/Contents/MacOS/Bar",
+        ])
         #expect(targets.allSatisfy { $0.kind == .localMac })
     }
 

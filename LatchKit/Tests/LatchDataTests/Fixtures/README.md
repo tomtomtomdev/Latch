@@ -35,3 +35,28 @@ this slice is trusted in production.** See the slice-5 decision-log entry in `PR
 
 - `powermetrics-tasks.plist` — three tasks (`WindowServer`, `apsd` pid 148, and the
   `ALL_TASKS` pid -2 aggregate) each with an `energy_impact`.
+
+# zombie fixtures
+
+Captured **real** `stderr` of a target relaunched with `NSZombieEnabled=YES` — the
+command Latch's `ZombieDiagnosticRunner` runs:
+
+```
+/usr/bin/env NSZombieEnabled=YES <executable>
+```
+
+Captured on macOS 26.2 / Xcode 16 from a throwaway MRC (`-fno-objc-arc`) tool that
+over-releases a `LatchLeaky` object then messages it. There is **no `Zombies` Instruments
+template/instrument** in current Xcode (verified: `xctrace list templates` /
+`list instruments` carry no zombie entry), so zombie detection uses the `NSZombieEnabled`
+launch-time env var §1 already mandates — the Obj-C runtime logs the diagnostic to stderr
+and the process aborts with `SIGTRAP` (exit 133). `MallocStackLogging` does **not** add a
+backtrace to that stderr line, so zombie findings carry no stack (the deeper retain/release
+history needs Instruments). See the slice-7 decision-log entry in `PROGRESS.md`.
+
+- `zombie-detected.txt` — a relaunch that messaged a deallocated instance: one
+  `*** -[LatchLeaky doWork]: message sent to deallocated instance 0x…` line.
+- `zombie-none.txt` — a clean relaunch (proper object lifecycle): normal `NSLog` output,
+  no zombie line, exit 0.
+- `zombie-launch-failed.txt` — `/usr/bin/env` could not exec the binary (`exit 127`,
+  `env: …: No such file or directory`) — the "couldn't relaunch" case.

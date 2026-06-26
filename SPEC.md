@@ -101,7 +101,8 @@ protocol DiagnosticRunner {                       // deep, on-demand runs
 | `LibprocMetricsSource` | CPU, memory, disk I/O, energy estimate, thread/zombie-process count | `proc_pid_rusage(RUSAGE_INFO_V6)`, `proc_pidinfo(PROC_PIDTASKINFO)` |
 | `NettopMetricsSource` | network I/O | shell `nettop -P -L 1 -J bytes_in,bytes_out -p <pid>` |
 | `PowermetricsSource` | energy/battery (high fidelity) | privileged `powermetrics --samplers tasks` (needs root) |
-| `XctraceDiagnosticRunner` | leaks, zombies, hitches, allocations, network, energy | `xctrace record --template … --attach <pid>` or `--launch`/`--device` + `xctrace export` to parse |
+| `XctraceDiagnosticRunner` | leaks, hitches, allocations, network, energy | `xctrace record --template … --attach <pid>` or `--launch`/`--device` + `xctrace export` to parse |
+| `ZombieDiagnosticRunner` | zombies (**relaunch only**) | relaunch the target with `NSZombieEnabled=YES` (`/usr/bin/env NSZombieEnabled=YES <exe>`); capture the runtime's `*** -[…]: message sent to deallocated instance` stderr |
 | `LeaksCLIRunner` | quick leak snapshot | shell `leaks <pid>` |
 | `SampleSpindumpRunner` | hang/hitch quick look | `sample <pid>`, `spindump <pid>` |
 | `DevicectlTargetDiscovery` | iOS device + app enumeration | `xcrun devicectl list devices` / `list processes` |
@@ -110,12 +111,20 @@ protocol DiagnosticRunner {                       // deep, on-demand runs
 Each adapter is replaceable by a `Fake…` double in tests. No adapter leaks `Process`,
 `mach_*`, or C interop types past the Data boundary — they map to Domain entities.
 
+> **Zombies has no Instruments template.** Verified on macOS 26.2 / Xcode 16: `xctrace
+> list templates` and `xctrace list instruments` carry **no** `Zombies` entry (Apple
+> removed it). Zombie detection therefore uses the underlying sanctioned mechanism §1
+> already describes — `NSZombieEnabled` injected as a launch-time env var — via a
+> dedicated `ZombieDiagnosticRunner` that relaunches the target and parses the runtime's
+> `message sent to deallocated instance` diagnostic from stderr. The `.trace`/`xctrace
+> export` path does not apply. (PLAN slice 7; decided with the user)
+
 ### 3.3 The six signals → backing
 
 | Signal | Live indicator | Deep diagnostic | Default threshold (tunable) |
 |---|---|---|---|
 | Memory leak | `ri_phys_footprint` trend (monotonic rise over N samples) | xctrace `Leaks` (attach) | sustained rise > 2 MB/min over 5 min |
-| Zombies | n/a (can't detect live) | xctrace `Zombies` (**relaunch only**) | any zombie message detected |
+| Zombies | n/a (can't detect live) | relaunch under `NSZombieEnabled` (**relaunch only**) | any zombie message detected |
 | Hitch / hang | main-thread CPU stall heuristic from sampling | `Time Profiler` / `spindump` / `sample` | main thread blocked > 250 ms (hang); frame > 16.7 ms |
 | CPU spike | CPU% from `ri_user_time`+`ri_system_time` delta | `Time Profiler` | > 80% of one core for > 3 s |
 | Network I/O | `nettop` bytes_in/out rate | xctrace `Network` | > 5 MB/s sustained 5 s |

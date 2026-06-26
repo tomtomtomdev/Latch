@@ -23,6 +23,7 @@ public struct LibprocTargetDiscovery: TargetDiscovery {
             id: String(entry.pid),
             kind: .localMac,
             pid: entry.pid,
+            executablePath: entry.executablePath,
             displayName: name
         )
     }

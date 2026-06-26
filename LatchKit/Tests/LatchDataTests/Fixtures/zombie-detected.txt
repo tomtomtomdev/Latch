@@ -1,0 +1,2 @@
+2026-06-26 23:48:46.048 zombie_demo[38089:89992614] zombie_demo starting
+2026-06-26 23:48:46.048 zombie_demo[38089:89992614] *** -[LatchLeaky doWork]: message sent to deallocated instance 0x1033169b0
