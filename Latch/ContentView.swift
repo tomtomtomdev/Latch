@@ -36,7 +36,7 @@ struct ContentView: View {
 
     @ViewBuilder private var detail: some View {
         if let target = model.selected {
-            LatchedTargetView(target: target)
+            VitalsView(target: target)
         } else {
             ContentUnavailableView(
                 "No target latched",
@@ -72,24 +72,6 @@ private struct TargetRow: View {
                 }
             }
         }
-    }
-}
-
-private struct LatchedTargetView: View {
-    let target: Target
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "link")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text(target.displayName).font(.title2)
-            if let pid = target.pid {
-                Text("Latched onto pid \(pid)").foregroundStyle(.secondary)
-            }
-        }
-        .padding()
-        .navigationTitle(target.displayName)
     }
 }
 
