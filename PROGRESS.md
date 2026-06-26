@@ -18,6 +18,9 @@ to the decision log when a non-obvious choice is made. Never delete history.
 | 8 | Hitches & hangs | ⬜ Not started | §3.3 | — |
 | 9 | iOS device support | ⬜ Not started | §1 | dev-signed only |
 | 10 | Session report & export | ⬜ Not started | §4 | — |
+| 11 | Main window shell + live timeline | ⬜ Not started | §8 | Design handoff; honest live lanes only |
+| 12 | Detection inbox + diagnostic detail | ⬜ Not started | §8 | Provenance-tagged feed (live alerts + deep findings) |
+| 13 | Menu-bar companion (mini mode) | ⬜ Not started | §8 | Promoted from backlog |
 
 Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
 
@@ -81,8 +84,17 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
 | 2026-06-26 | `leaks` text parsing lives in the Data adapter (`LeaksCLIRunner`); findings come from `STACK OF` groups when backtraces exist, else from flat `ROOT LEAK:` lines | `leaks` output differs with/without launch-time `MallocStackLogging` (both shapes captured live on macOS 26.2 / Xcode 16 as committed fixtures): grouped stacks (title + instance count + backtrace + group bytes) vs address-only blocks. `DiagnosticResult.hasBacktraces` (a finding carries a stack) drives the UI's MallocStackLogging caveat. Exit codes 0 (none) and 1 (found) both parse; >1 throws `DiagnosticError.toolFailed` (verified vs `man leaks`) |
 | 2026-06-26 | Regex literals in `LeaksCLIRunner` are declared **function-local**, not `static let` | Swift 6 strict concurrency: `Regex` is not `Sendable`, so a shared `static let` Regex is a `#MutableGlobalVariable` concurrency error. Each pattern is used in one place, so a local `let` is both correct and clean |
 | 2026-06-26 | `VitalsModel` stores the full `Target` (optional) alongside `pid` for the deep runners | `DiagnosticRunner.run(_:options:)` attaches by `Target` (SPEC §3.1) while live polling needs only `pid`; adding an optional `target` is the thinnest change that keeps the existing pid-based polling tests untouched. `runDiagnostic` extracted (Fowler: Extract Function + Parameterize Function) so `checkLeaks`/`recordLeakTrace` differ only in which fields they write — same move as slice 4's `sustainedAlert` |
+| 2026-06-26 | Adopt `design_handoff_latch_profiler/` as the authoritative UI/visual spec (hi-fi) — recorded as SPEC §8; redesign scheduled as PLAN slices 11–13 (chosen with the user) | The handoff has sat in the repo since the initial scaffold commit but was never referenced by SPEC/PLAN/PROGRESS/CLAUDE, and the UI built across slices 1–6 is a minimal functional dashboard, not the handoff. Per rule #1 (spec-driven), SPEC is updated first. The redesign is sequenced **after** the data slices it visualizes (timeline lanes ← slices 2/4/5/8; detection inbox ← slices 6–8/10), so it lands as slices 11 (main window + live timeline), 12 (detection inbox + diagnostic detail), 13 (menu-bar companion, promoted from backlog). The prototype fakes all data; SPEC §8 carries a **binding** reconciliation where the handoff conflicts with §1 honest constraints — §1 wins: no live zombie lane (relaunch-only), Frame-time is a hint/deep run not a live counter, energy live lane is the watts estimate, symbolicated call trees/stacks are on-demand deep-run output (provenance shown per card), iOS is dev-signed-device-only and watchOS is out of scope, and live sampling stays ~1 Hz (faster canvas redraw is presentation-only) |
 
 ## Changelog
+- 2026-06-26 — **Design handoff acknowledged (docs only, no code).** Adopted
+  `design_handoff_latch_profiler/` (`README.md` + `Latch.dc.html`) as the authoritative
+  hi-fi UI/visual spec: added **SPEC §8** (two surfaces — main window + menu-bar companion —
+  plus a *binding* live-vs-deep reconciliation table that subordinates the faked prototype
+  stream to the §1 honest constraints), added **PLAN slices 11–13** (main window + live
+  timeline · detection inbox + diagnostic detail · menu-bar companion, the last promoted out
+  of the backlog), and logged the adopt decision + constraint deltas. No production code
+  changed; the redesign is sequenced after the data slices it visualizes.
 - 2026-06-26 — **Slice 6 (Leaks — deep, on-demand attach) landed.** Domain gained the deep-run
   vocabulary: `DiagnosticKind` (`.leaks` only — others land with their slices), the
   `DiagnosticRunner` port (`kind`/`requiresRelaunch`/`run(_:options:)`), `DiagnosticResult`

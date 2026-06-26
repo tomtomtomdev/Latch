@@ -79,10 +79,40 @@ constraints from `SPEC.md §1` respected (no fake capabilities).
   paths → a single shareable bundle (JSON + optional Markdown summary).
 - **Test:** report serialization round-trips; includes provenance per metric.
 
+## Slice 11 — Main window shell + live timeline (design handoff)
+- Recreate the main-window chrome from `SPEC.md §8` / the handoff in SwiftUI/AppKit:
+  toolbar (target title + latched status, live metric chips, `30s/1m/5m` range, pause/resume,
+  settings), sidebar (attached targets with health dot + issue badge + `Attach process…`),
+  center **live timeline** with the honest live lanes (CPU, Memory, Network, Energy *estimate*),
+  right-panel placeholder. Match the binding tokens (lane colors, teal accent, dark surfaces).
+- **Honesty (SPEC §1/§8):** live lanes only; the Frame-time lane is gated/labelled as a hint
+  until slice 8; **no** live zombie lane; energy lane is the watts estimate, labelled as such.
+  Pause/Resume gates the poll loop; range maps to the per-target ring buffer window (≤ cap).
+- **Test:** chip/lane values bind to the latest `MetricSample`; pause stops appends; changing
+  range trims the visible window; selecting a sidebar target swaps the streamed target.
+  (View-model tests; pixel-exact layout via optional snapshot, not load-bearing.)
+
+## Slice 12 — Detection inbox + diagnostic detail
+- Right-panel inbox merging **live threshold `Alert`s** (§3.3) and **deep-run findings**
+  (slices 6–8) into one provenance-tagged feed (newest first, capped). Each card states its
+  provenance (live hint vs measured/deep + which adapter). Card → diagnostic detail (meta grid,
+  call tree + stack trace from the deep run, suggested fix, `Symbolicate` / `Copy trace`).
+- Timeline **detection markers** + click-to-select wired to the same feed; back returns to inbox.
+- **Honesty (SPEC §8):** symbolication is the on-demand action; live hints never masquerade as
+  symbolicated deep findings.
+- **Test:** feed orders + caps; selecting a marker or card opens its detail; provenance shown;
+  empty ("0 detections") state.
+
+## Slice 13 — Menu-bar companion (mini mode)
+- The status-item dropdown from `SPEC.md §8` via `NSStatusItem` + popover: per-target health
+  line (CPU/MEM/NET summary + status), recent detections (≤3), `Pause all` / `Resume all` /
+  `Open Latch`. Glanceable health across all attached targets.
+- **Test:** dropdown lists attached targets with health/issue counts; `Pause all` toggles every
+  poller; the recent-detections list reflects the slice-12 feed.
+
 ---
 
 ## Backlog / later
 - MetricKit companion for iOS targets you own (post-hoc real energy/hang reports).
-- Menu-bar mini mode (ties to existing status-bar app patterns).
 - Multi-target side-by-side comparison.
 - Baseline capture + regression gate (CI hook).

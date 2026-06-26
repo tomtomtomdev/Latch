@@ -170,3 +170,42 @@ adapter, the relevant skill (`apple-process-metrics`, `instruments-xctrace`,
 `code-signing-entitlements`, `macos-apple-docs`, `ios-apple-docs`) **must be
 consulted and its claims verified against current official docs / man pages /
 `xctrace list templates`** — not against the agent's training data.
+
+---
+
+## 8. User interface (design handoff)
+
+The authoritative UI/visual spec is the **design handoff** in
+`design_handoff_latch_profiler/` — `README.md` (written spec: layout, design tokens,
+interactions) and `Latch.dc.html` (an interactive HTML prototype). It is **high-fidelity**:
+colors, typography, spacing, layout, and interactions are to be reproduced precisely in
+SwiftUI/AppKit. The HTML's inlined runtime / base64 machinery is **not** production code —
+treat the bundle purely as a visual + interaction reference.
+
+**Two surfaces:** a **main window** (live deep-dive on one attached target — toolbar with
+live metric chips + range/pause controls, a sidebar of attached targets, a center live
+timeline of lanes, and a right-hand detection inbox / diagnostic detail) and a **menu-bar
+companion dropdown** (glanceable health across all attached targets). Native macOS dark
+pro-tool aesthetic (Instruments / Activity Monitor / Xcode).
+
+**The prototype fakes all data.** In production every value comes from the §3.2 adapters.
+Where the handoff's continuous "detection stream" conflicts with the honest constraints of
+§1, **§1 wins** and the UI must keep *live polling* and *on-demand deep runs* visually
+distinct (§1's core design principle — never conflate them). This reconciliation is binding:
+
+| Handoff element | Honest mapping (binding) |
+|---|---|
+| 5 live lanes: CPU, Memory, Network, Energy, Frame time | CPU/Memory (slice 2) and Network (slice 4) are genuine live lanes. **Energy** live lane = the `ri_energy_nj` **watts estimate** (slice 5); measured `powermetrics` impact is an on-demand upgrade, not a live lane. **Frame time** is not a cheap live counter for an external attach — it is a sampling **hint** + deep run (§3.3, slice 8); render it as a hint lane or gate it, never as ground-truth frame timing. |
+| "Zombie object messaged" as a live detection | **Impossible live.** Zombies require relaunch under `NSZombieEnabled` (§1, slice 7). The timeline must not stream live zombie detections; zombies appear only as a deep, relaunch-gated run. |
+| Detection cards with symbolicated **call tree** + **stack trace** + "Symbolicate" | Deep-run output (`xctrace`/`leaks`/`sample`/`spindump`, slices 6–8) + export (slice 10) — **on-demand**, not part of the live stream. The inbox blends live threshold alerts (§3.3) with deep-run findings; every card shows its **provenance** (which adapter / live vs deep). |
+| iOS + watchOS targets streaming live vitals | iOS = **development-signed only**, on a connected/paired/unlocked device, via `xctrace`/`devicectl` (§1, slice 9) — not cheap 20 Hz `libproc` streaming. **watchOS is out of scope** (§2). Sample sidebar rows are illustrative; real rows obey §1 eligibility and say why an ineligible target can't attach. |
+| "streaming · 20 Hz" | Live **sampling** stays on cheap APIs at the slice-2 cadence (~1 Hz); a faster canvas redraw is a presentation choice only, and sampling pauses when the app is not frontmost (per the handoff's own implementation note). |
+| Range control `30s · 1m · 5m` | Maps to the per-target ring buffer (§4); windows must be ≤ the retention cap. |
+
+**Design tokens** (full palette, type scale, radii, shadows) live in the handoff README and
+are the single source — not duplicated here. Binding accents: lane colors CPU `#FF9F0A` ·
+Memory `#BF5AF2` · Network `#64D2FF` · Energy `#30D158` · Frame `#FF375F`; Latch teal
+`#2DD4BF`; severity Critical `#FF453A` / Warning `#FF9F0A` / Info `#0A84FF`.
+
+The redesign is scheduled as PLAN slices 11–13 (it depends on the data slices it
+visualizes); the current functional dashboard is the interim UI until then.
