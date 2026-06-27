@@ -12,6 +12,7 @@ struct DeepDiagnosticsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             leaksSection
+            hitchesSection
             zombiesSection
         }
     }
@@ -58,17 +59,25 @@ struct DeepDiagnosticsView: View {
             )
         }
         ForEach(Array(report.findings.enumerated()), id: \.offset) { _, finding in
-            leakFinding(finding)
+            findingRow(
+                title: finding.title,
+                subtitle: "\(finding.instanceCount)× · \(finding.byteCount) bytes",
+                monospacedTitle: false,
+                backtrace: finding.backtrace
+            )
         }
     }
 
-    private func leakFinding(_ finding: Finding) -> some View {
+    /// One finding row shared by every deep-run report: a selectable title, a one-line
+    /// subtitle, and any backtrace frames. `monospacedTitle` is on for symbol/selector titles
+    /// (hitches, zombies) and off for leak signatures.
+    private func findingRow(
+        title: String, subtitle: String, monospacedTitle: Bool, backtrace: [String]
+    ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(finding.title).font(.callout).textSelection(.enabled)
-            Text("\(finding.instanceCount)× · \(finding.byteCount) bytes")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            ForEach(Array(finding.backtrace.enumerated()), id: \.offset) { _, frame in
+            Text(title).font(.callout).monospaced(monospacedTitle).textSelection(.enabled)
+            Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            ForEach(Array(backtrace.enumerated()), id: \.offset) { _, frame in
                 Text(frame).font(.caption2).monospaced().foregroundStyle(.secondary)
             }
         }
@@ -85,6 +94,52 @@ struct DeepDiagnosticsView: View {
                 NSWorkspace.shared.open(URL(fileURLWithPath: path))
             }
             .controlSize(.small)
+        }
+    }
+
+    /// Hitches & hangs: a deep run, distinct from the live signals. "Check for Hangs" samples
+    /// the running process (`sample <pid>`, no relaunch) and flags a main-thread stack wedged
+    /// past the hang bar; "Record Time Profiler Trace" captures an `xctrace` trace to open in
+    /// Instruments. The stall verdict is an honest sampling *hint* — a main thread parked in
+    /// its run loop reads the same — so the trace is the ground truth. (SPEC §1, §3.3; PLAN slice 8)
+    @ViewBuilder private var hitchesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Hitches & Hangs").font(.headline)
+            HStack(spacing: 12) {
+                if model.canCheckHitches {
+                    Button("Check for Hangs (sample)", systemImage: "gauge.with.needle") {
+                        Task { await model.checkHitches() }
+                    }
+                }
+                if model.canRecordHitchTrace {
+                    Button("Record Time Profiler Trace", systemImage: "record.circle") {
+                        Task { await model.recordHitchTrace() }
+                    }
+                }
+                if model.isRunningDiagnostic { ProgressView().controlSize(.small) }
+            }
+            .disabled(model.isRunningDiagnostic)
+            Text("Sampling attaches with sample (no relaunch) and flags a main-thread stack "
+                + "wedged > 250 ms. It's an honest hint — a main thread idling in its run loop "
+                + "looks similar; the Time Profiler trace is the ground truth.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let report = model.hitchReport { hitchReport(report) }
+            if let message = model.hitchMessage { caveat(message, icon: "exclamationmark.triangle") }
+            if let path = model.hitchTraceResult?.tracePath { traceRow(path) }
+            if let message = model.hitchTraceMessage { caveat(message, icon: "lock.fill") }
+        }
+    }
+
+    @ViewBuilder private func hitchReport(_ report: DiagnosticResult) -> some View {
+        reportSummary(report)
+        ForEach(Array(report.findings.enumerated()), id: \.offset) { _, finding in
+            findingRow(
+                title: finding.title,
+                subtitle: "main thread wedged across \(finding.instanceCount) samples",
+                monospacedTitle: true,
+                backtrace: finding.backtrace
+            )
         }
     }
 
@@ -121,18 +176,17 @@ struct DeepDiagnosticsView: View {
     @ViewBuilder private func zombieReport(_ report: DiagnosticResult) -> some View {
         reportSummary(report)
         ForEach(Array(report.findings.enumerated()), id: \.offset) { _, finding in
-            VStack(alignment: .leading, spacing: 2) {
-                Text(finding.title).font(.callout).monospaced().textSelection(.enabled)
-                Text("messaged \(finding.instanceCount)× after deallocation")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.vertical, 2)
+            findingRow(
+                title: finding.title,
+                subtitle: "messaged \(finding.instanceCount)× after deallocation",
+                monospacedTitle: true,
+                backtrace: finding.backtrace
+            )
         }
     }
 
     /// The one-line outcome of a deep diagnostic run — red when it found something, green when
-    /// it came back clean. Shared by the leak and zombie reports.
+    /// it came back clean. Shared by the leak, hitch, and zombie reports.
     private func reportSummary(_ report: DiagnosticResult) -> some View {
         Text(report.summary)
             .font(.callout.weight(.medium))

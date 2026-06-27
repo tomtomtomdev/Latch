@@ -34,6 +34,16 @@ final class VitalsModel {
     private(set) var zombieReport: DiagnosticResult?
     /// Why the last zombie check could not complete (couldn't relaunch the executable, etc.).
     private(set) var zombieMessage: String?
+    /// The most recent hitch/hang check result (a `sample` of the main thread → stall
+    /// findings), or `nil` until a check is run. (SPEC §3.3; PLAN slice 8)
+    private(set) var hitchReport: DiagnosticResult?
+    /// Why the last hitch check could not complete (target exited, etc.).
+    private(set) var hitchMessage: String?
+    /// The most recent recorded Time Profiler trace, carrying the `.trace` path to open in
+    /// Instruments for the full main-thread analysis. (PLAN slice 8)
+    private(set) var hitchTraceResult: DiagnosticResult?
+    /// Why the last Time Profiler recording failed (commonly the debugger-entitlement wall).
+    private(set) var hitchTraceMessage: String?
     /// Whether any on-demand deep diagnostic (leak check, trace recording, or zombie check) is
     /// in flight — drives the progress spinner shared by those actions.
     private(set) var isRunningDiagnostic = false
@@ -49,6 +59,10 @@ final class VitalsModel {
     /// executable path to relaunch — zombies cannot attach to the running process, so without
     /// a path there is nothing to relaunch and the action is hidden. (SPEC §1; PLAN slice 7)
     var canCheckZombies: Bool { zombieRunner != nil && target?.executablePath != nil }
+    /// Whether a quick hitch/hang check (`sample` CLI) is wired for this target. (PLAN slice 8)
+    var canCheckHitches: Bool { hitchRunner != nil && target != nil }
+    /// Whether a deep Time Profiler trace recording (`xctrace`) is wired for this target. (PLAN slice 8)
+    var canRecordHitchTrace: Bool { hitchTraceRecorder != nil && target != nil }
 
     private let source: MetricsSource
     private let networkSource: NetworkSource?
@@ -56,6 +70,8 @@ final class VitalsModel {
     private let leakChecker: DiagnosticRunner?
     private let traceRecorder: DiagnosticRunner?
     private let zombieRunner: DiagnosticRunner?
+    private let hitchRunner: DiagnosticRunner?
+    private let hitchTraceRecorder: DiagnosticRunner?
     private let target: Target?
     private let pid: Int32
     private let capacity: Int
@@ -74,6 +90,8 @@ final class VitalsModel {
         leakChecker: DiagnosticRunner? = nil,
         traceRecorder: DiagnosticRunner? = nil,
         zombieRunner: DiagnosticRunner? = nil,
+        hitchRunner: DiagnosticRunner? = nil,
+        hitchTraceRecorder: DiagnosticRunner? = nil,
         target: Target? = nil,
         pid: Int32,
         capacity: Int = 3600,
@@ -85,6 +103,8 @@ final class VitalsModel {
         self.leakChecker = leakChecker
         self.traceRecorder = traceRecorder
         self.zombieRunner = zombieRunner
+        self.hitchRunner = hitchRunner
+        self.hitchTraceRecorder = hitchTraceRecorder
         self.target = target
         self.pid = pid
         self.capacity = capacity
@@ -175,6 +195,30 @@ final class VitalsModel {
             zombieRunner, failureLabel: "Zombie check",
             onSuccess: { self.zombieReport = $0; self.zombieMessage = nil },
             onFailure: { self.zombieReport = nil; self.zombieMessage = $0 }
+        )
+    }
+
+    /// Take a quick hitch/hang look by sampling the running target (`sample <pid>`) and storing
+    /// any main-thread stall findings. This is the verified same-UID sampling path (SPEC §1's
+    /// deep-run mode, light end); a failure surfaces as `hitchMessage` rather than a stale
+    /// report. The stall verdict is an honest hint — the Time Profiler trace is ground truth.
+    /// (PLAN slice 8)
+    func checkHitches() async {
+        await runDiagnostic(
+            hitchRunner, failureLabel: "Hitch check",
+            onSuccess: { self.hitchReport = $0; self.hitchMessage = nil },
+            onFailure: { self.hitchReport = nil; self.hitchMessage = $0 }
+        )
+    }
+
+    /// Record a deep Time Profiler trace via `xctrace` and store its `.trace` path for opening
+    /// in Instruments. The deep attach needs the debugger entitlement; if it can't acquire the
+    /// task port the failure is reported honestly via `hitchTraceMessage`. (SPEC §1, §5; PLAN slice 8)
+    func recordHitchTrace() async {
+        await runDiagnostic(
+            hitchTraceRecorder, failureLabel: "Time Profiler recording",
+            onSuccess: { self.hitchTraceResult = $0; self.hitchTraceMessage = nil },
+            onFailure: { self.hitchTraceResult = nil; self.hitchTraceMessage = $0 }
         )
     }
 

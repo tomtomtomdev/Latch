@@ -1,0 +1,67 @@
+Analysis of sampling Python (pid 4242) every 100 milliseconds
+Process:         Python [4242]
+Path:            /Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python
+Load Address:    0x103868000
+Identifier:      com.apple.python3
+Version:         3.9.6 (3.9.6)
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  zsh [4240]
+Target Type:     live task
+
+Date/Time:       2026-06-27 10:21:20.030 +0700
+Launch Time:     2026-06-27 10:21:19.732 +0700
+OS Version:      macOS 26.2 (25C56)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         4769K
+Physical footprint (peak):  4769K
+Idle exit:                  untracked
+----
+
+Call graph:
+    10 Thread_1   DispatchQueue_1: com.apple.main-thread  (serial)
+      10 start  (in dyld) + 7184  [0x186509d54]
+        10 Py_BytesMain  (in Python3) + 44  [0x1039db778]
+          10 ???  (in Python3)  load address 0x103868000 + 0x1736d4  [0x1039db6d4]
+            10 Py_RunMain  (in Python3) + 516  [0x1039daf80]
+              10 PyRun_SimpleStringFlags  (in Python3) + 64  [0x1039be894]
+                10 PyRun_StringFlags  (in Python3) + 152  [0x1039be988]
+                  10 ???  (in Python3)  load address 0x103868000 + 0x157700  [0x1039bf700]
+                    10 PyEval_EvalCode  (in Python3) + 80  [0x10397c0f8]
+                      10 ???  (in Python3)  load address 0x103868000 + 0x11b874  [0x103983874]
+                        9 _PyEval_EvalFrameDefault  (in Python3) + 17440  [0x1039805e0]
+                        + 9 ???  (in Python3)  load address 0x103868000 + 0x11ab1c  [0x103982b1c]
+                        +   8 ???  (in Python3)  load address 0x103868000 + 0x416b0  [0x1038a96b0]
+                        +   ! 6 _PyEval_EvalFrameDefault  (in Python3) + 17440  [0x1039805e0]
+                        +   ! : 6 ???  (in Python3)  load address 0x103868000 + 0x11ab7c  [0x103982b7c]
+                        +   ! :   5 _PyObject_MakeTpCall  (in Python3) + 352  [0x1038a8cc0]
+                        +   ! :   | 4 ???  (in Python3)  load address 0x103868000 + 0xa1208  [0x103909208]
+                        +   ! :   | + 2 ???  (in Python3)  load address 0x103868000 + 0xd26dc  [0x10393a6dc]
+                        +   ! :   | + ! 1 _PyArg_ParseTupleAndKeywords_SizeT  (in Python3) + 116  [0x10399bf98]
+                        +   ! :   | + ! : 1 ???  (in Python3)  load address 0x103868000 + 0x1336e0  [0x10399b6e0]
+                        +   ! :   | + ! :   1 DYLD-STUB$$strchr  (in Python3) + 4  [0x103a37acc]
+                        +   ! :   | + ! 1 _PyArg_ParseTupleAndKeywords_SizeT  (in Python3) + 60  [0x10399bf60]
+                        +   ! :   | + 2 ???  (in Python3)  load address 0x103868000 + 0xd26f8  [0x10393a6f8]
+                        +   ! :   | +   2 PyObject_Str  (in Python3) + 160  [0x1038f2aa0]
+                        +   ! :   | +     2 ???  (in Python3)  load address 0x103868000 + 0x6f69c  [0x1038d769c]
+                        +   ! :   | +       2 ???  (in Python3)  load address 0x103868000 + 0x6a5f4  [0x1038d25f4]
+                        +   ! :   | +         1 ???  (in Python3)  load address 0x103868000 + 0x6b170  [0x1038d3170]
+                        +   ! :   | +         1 PyUnicode_New  (in Python3) + 132  [0x1039176cc]
+                        +   ! :   | 1 ???  (in Python3)  load address 0x103868000 + 0xd28f4  [0x10393a8f4]
+                        +   ! :   1 _PyObject_MakeTpCall  (in Python3) + 76  [0x1038a8bac]
+                        +   ! :     1 _PyTuple_FromArray  (in Python3) + 248  [0x103903cc8]
+                        +   ! 1 _PyEval_EvalFrameDefault  (in Python3) + 4292  [0x10397d284]
+                        +   ! : 1 PyList_Append  (in Python3) + 28  [0x1038c94b4]
+                        +   ! 1 _PyEval_EvalFrameDefault  (in Python3) + 1968  [0x10397c970]
+                        +   1 ???  (in Python3)  load address 0x103868000 + 0x638e8  [0x1038cb8e8]
+                        +     1 ???  (in Python3)  load address 0x103868000 + 0x66e68  [0x1038cee68]
+                        +       1 PyLong_FromLong  (in Python3) + 84  [0x1038cf704]
+                        1 _PyEval_EvalFrameDefault  (in Python3) + 17196  [0x1039804ec]
+                          1 ???  (in Python3)  load address 0x103868000 + 0x11ae28  [0x103982e28]
+                            1 ???  (in Python3)  load address 0x103868000 + 0x63164  [0x1038cb164]
+
+Total number in stack (recursive counted multiple, when >=5):
+
+Sort by top of stack, same collapsed (when >= 5):

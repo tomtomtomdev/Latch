@@ -42,6 +42,29 @@ struct XctraceDiagnosticRunnerTests {
         #expect(!result.hasFindings)
     }
 
+    // The same recorder, constructed for hitches, records a Time Profiler trace (the verified
+    // template for main-thread stalls) into a per-pid `.trace` and hands back its path. Export
+    // parsing is deferred — the deep attach hits the same debugger-entitlement task-port wall
+    // as Leaks. (SPEC §1; PLAN slice 8)
+    @Test func run_recordsTimeProfilerTrace_forHitches() async throws {
+        let command = RecordingCommandRunner(result: CommandResult(stdout: "", stderr: "", exitCode: 0))
+        let xctrace = XctraceDiagnosticRunner(
+            commandRunner: command, outputDirectory: "/tmp/latch-traces", kind: .hitches
+        )
+
+        let result = try await xctrace.run(target, options: DiagnosticOptions(timeLimit: .seconds(5)))
+
+        #expect(xctrace.kind == .hitches)
+        #expect(command.arguments == [
+            "xctrace", "record", "--template", "Time Profiler",
+            "--attach", "4242",
+            "--time-limit", "5s",
+            "--output", "/tmp/latch-traces/Latch-hitches-4242.trace",
+        ])
+        #expect(result.tracePath == "/tmp/latch-traces/Latch-hitches-4242.trace")
+        #expect(result.kind == .hitches)
+    }
+
     // The deep attach needs the debugger entitlement to acquire the task port; when it can't
     // (the real failure captured during development), the runner surfaces the tool's error
     // honestly rather than pretending the trace is valid. (SPEC §1)

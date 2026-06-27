@@ -60,3 +60,29 @@ history needs Instruments). See the slice-7 decision-log entry in `PROGRESS.md`.
   no zombie line, exit 0.
 - `zombie-launch-failed.txt` — `/usr/bin/env` could not exec the binary (`exit 127`,
   `env: …: No such file or directory`) — the "couldn't relaunch" case.
+
+# sample fixtures
+
+Captured **real** stdout of the command Latch's `SampleDiagnosticRunner` runs:
+
+```
+sample <pid> <seconds> <interval-ms>
+```
+
+Captured on macOS 26.2 / Xcode 16. `sample` is Latch's verified same-UID hitch/hang
+quick-look path: it suspends the target every interval, records all thread call stacks,
+and prints a condensed **call tree** with a per-frame sample count (count × interval ≈
+time on that frame). It works **without root** (exit 0; a missing process exits 255) —
+unlike `spindump`, which "must be run as root when sampling the live system" and is
+therefore gated like `powermetrics` (deferred). The deep `xctrace` Time Profiler attach
+hits the same debugger-entitlement task-port wall as slice 6's Leaks. The runner finds
+the `com.apple.main-thread` block, reconstructs a stack series from its call tree
+(each childless leaf → `count` copies of its root→leaf stack), and runs the Domain
+`DetectHangs` heuristic. pids sanitized to placeholders. See the slice-8 decision log.
+
+- `sample-hang.txt` — a **wedged** main thread: `sleep` blocked in `__semwait_signal`
+  for all 92 samples (× 10 ms = 920 ms), a single non-branching spine → one hang.
+- `sample-responsive.txt` — a **busy/responsive** main thread (Python compute): the call
+  tree branches into many short-lived leaves. High-count *internal* frames accumulate
+  many samples, but no childless **leaf** is wedged ≥ the threshold → **no hang**. Pins
+  that the parser flags only wedged leaves, never high-count internal frames.

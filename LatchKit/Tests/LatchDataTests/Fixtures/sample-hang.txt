@@ -1,0 +1,35 @@
+Analysis of sampling sleep (pid 4242) every 10 milliseconds
+Process:         sleep [4242]
+Path:            /bin/sleep
+Load Address:    0x1022a4000
+Identifier:      sleep
+Version:         326
+Code Type:       ARM64E
+Platform:        macOS
+Parent Process:  zsh [4240]
+Target Type:     live task
+
+Date/Time:       2026-06-27 10:11:48.267 +0700
+Launch Time:     2026-06-27 10:11:47.951 +0700
+OS Version:      macOS 26.2 (25C56)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         800K
+Physical footprint (peak):  832K
+Idle exit:                  untracked
+----
+
+Call graph:
+    92 Thread_1   DispatchQueue_1: com.apple.main-thread  (serial)
+      92 start  (in dyld) + 7184  [0x186509d54]
+        92 ???  (in sleep)  load address 0x1022a4000 + 0x740  [0x1022a4740]
+          92 nanosleep  (in libsystem_c.dylib) + 220  [0x18676ad6c]
+            92 __semwait_signal  (in libsystem_kernel.dylib) + 8  [0x1868922f4]
+
+Total number in stack (recursive counted multiple, when >=5):
+
+Sort by top of stack, same collapsed (when >= 5):
+        __semwait_signal  (in libsystem_kernel.dylib)        92
+
+Binary Images:

@@ -8,4 +8,8 @@ public enum DiagnosticKind: Sendable, Equatable {
     /// Over-released objects, detected by relaunching the target under `NSZombieEnabled`.
     /// Cannot attach to a running process — see `DiagnosticRunner.requiresRelaunch`. (SPEC §1)
     case zombies
+    /// Main-thread hitches/hangs, found by sampling the running process (`sample <pid>`) and
+    /// flagging a stalled main-thread stack, or by recording a deep `Time Profiler` trace.
+    /// (SPEC §3.3; PLAN slice 8)
+    case hitches
 }

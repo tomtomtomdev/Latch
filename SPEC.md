@@ -119,6 +119,18 @@ Each adapter is replaceable by a `Fake…` double in tests. No adapter leaks `Pr
 > `message sent to deallocated instance` diagnostic from stderr. The `.trace`/`xctrace
 > export` path does not apply. (PLAN slice 7; decided with the user)
 
+> **`SampleSpindumpRunner` ships as the `sample` path; `spindump` is root-gated.** Verified
+> on macOS 26.2 / Xcode 16: `sample <pid> <s> <ms>` profiles a same-UID process **without
+> root** (the verified hitch/hang quick look — a `SampleDiagnosticRunner`), whereas
+> `spindump` refuses without root ("spindump must be run as root when sampling the live
+> system"), so it is privilege-gated like `powermetrics` and **deferred**. The deep `Time
+> Profiler` template (confirmed in `xctrace list templates`) records via the shared
+> `XctraceDiagnosticRunner` but its `--attach` hits the same `com.apple.security.cs.debugger`
+> task-port wall as Leaks, so export parsing is **deferred** and validated in the manual
+> smoke (§6). The `sample` call tree gives per-frame sample counts, not guaranteed-consecutive
+> samples, so the live stall verdict is an honest *hint* (§1) — the `.trace` is ground truth.
+> (PLAN slice 8)
+
 ### 3.3 The six signals → backing
 
 | Signal | Live indicator | Deep diagnostic | Default threshold (tunable) |

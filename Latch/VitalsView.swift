@@ -24,6 +24,12 @@ struct VitalsView: View {
                 outputDirectory: FileManager.default.temporaryDirectory.path
             ),
             zombieRunner: ZombieDiagnosticRunner(commandRunner: runner),
+            hitchRunner: SampleDiagnosticRunner(commandRunner: runner),
+            hitchTraceRecorder: XctraceDiagnosticRunner(
+                commandRunner: runner,
+                outputDirectory: FileManager.default.temporaryDirectory.path,
+                kind: .hitches
+            ),
             target: target,
             pid: target.pid ?? -1
         ))
