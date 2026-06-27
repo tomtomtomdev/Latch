@@ -1,0 +1,30 @@
+{
+  "info": {
+    "arguments": [
+      "devicectl",
+      "device",
+      "info",
+      "apps",
+      "--device",
+      "00008030-000000000000002E",
+      "--quiet",
+      "--json-output",
+      "/tmp/latch-devicectl/apps.json"
+    ],
+    "commandType": "devicectl.device.info.apps",
+    "environment": {
+      "TERM": "xterm-256color"
+    },
+    "jsonVersion": 3,
+    "outcome": "success",
+    "version": "518.31"
+  },
+  "result": {
+    "apps": [],
+    "defaultAppsIncluded": false,
+    "deviceIdentifier": "BBBBBBBB-5555-6666-7777-888888888888",
+    "hiddenAppsIncluded": false,
+    "internalAppsIncluded": false,
+    "removableAppsIncluded": true
+  }
+}

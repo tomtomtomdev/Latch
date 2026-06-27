@@ -131,6 +131,20 @@ Each adapter is replaceable by a `Fake…` double in tests. No adapter leaks `Pr
 > samples, so the live stall verdict is an honest *hint* (§1) — the `.trace` is ground truth.
 > (PLAN slice 8)
 
+> **`DevicectlTargetDiscovery` ships device discovery; on-device app/process enumeration is
+> deferred.** `devicectl` writes results only to a JSON file via `--json-output` (its documented,
+> version-stable interface; stdout is explicitly *not* stable), so the adapter points it at a file,
+> reads it, and decodes Domain `Device`s. `devices()` (`xcrun devicectl list devices`) is built and
+> verified against **real captured** output (Xcode 26.5 / devicectl 518.31, jsonVersion 3). The
+> hardware `udid` it surfaces is the `xctrace --device <udid>` key (verified against `xctrace list
+> devices`), and `XctraceDiagnosticRunner` inserts `--device <udid>` for device-backed targets.
+> Populated **app/process enumeration** (`device info apps`/`processes`) needs an actively-connected
+> device (paired devices in the dev environment are tunnel-disconnected — `xctrace` lists them
+> "Offline"), so a real populated fixture can't be captured to verify the entry schema; per §7
+> (verify-then-use) and §1 (no fake capabilities) that parser is **deferred** to the manual smoke
+> (§6). The Domain dev-signed gate (`Device.eligibility(forApp:)`) is built and tested, ready for it.
+> (PLAN slice 9)
+
 ### 3.3 The six signals → backing
 
 | Signal | Live indicator | Deep diagnostic | Default threshold (tunable) |
@@ -149,7 +163,11 @@ Each adapter is replaceable by a `Fake…` double in tests. No adapter leaks `Pr
 
 ## 4. Data model (Domain entities)
 
-- `Target { id, kind: .localMac | .iOSDevice, pid?, bundleID?, displayName, deviceUDID? }`
+- `Target { id, kind: .localMac | .iOSDevice, pid?, executablePath?, bundleID?, displayName, deviceUDID? }`
+- `Device { udid, name, platform, osVersion?, isPaired, developerModeEnabled, isConnected }` — a
+  connected iOS device; `udid` is the hardware UDID that `xctrace --device` keys on. Whether a
+  target can be profiled is **computed** (`TargetEligibility` / `IneligibilityReason`), not stored:
+  an iOS device must be paired with Developer Mode on, and the app must be development-signed. (§1)
 - `MetricSample { timestamp, cpuPercent, physFootprintBytes, residentBytes, threadCount, diskReadBytes, diskWriteBytes, netInBytesPerSec, netOutBytesPerSec, energyEstimate }`
 - `SignalKind { memoryLeak, zombies, hitch, cpuSpike, networkIO, battery }`
 - `Threshold { signal, comparator, value, window }`

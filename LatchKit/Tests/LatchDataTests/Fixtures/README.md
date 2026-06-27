@@ -86,3 +86,33 @@ the `com.apple.main-thread` block, reconstructs a stack series from its call tre
   tree branches into many short-lived leaves. High-count *internal* frames accumulate
   many samples, but no childless **leaf** is wedged ≥ the threshold → **no hang**. Pins
   that the parser flags only wedged leaves, never high-count internal frames.
+
+# devicectl fixtures
+
+JSON written by the command Latch's `DevicectlTargetDiscovery` runs to enumerate connected
+iOS devices:
+
+```
+xcrun devicectl list devices --quiet --json-output <file>
+```
+
+Captured **real** on Xcode 26.5 / devicectl 518.31 (`jsonVersion` 3), then **sanitized**:
+the JSON *structure, keys, and value types are the genuine devicectl shape* (so the Codable
+parse is pinned against reality, not a guess — SPEC §7), and only personal/identifying *values*
+(device names, serial numbers, ECIDs, UDIDs, CoreDevice identifiers, hostnames) are replaced
+with synthetic placeholders. `devicectl`'s own `--help` states JSON-to-a-file is the **only**
+supported machine interface (stdout is explicitly not stable), so the adapter writes to a file
+and reads it back; `/dev/stdout` is unreliable for `--json-output` (atomic write fails). The
+hardware `udid` is the identifier `xctrace --device <udid>` keys on (verified against `xctrace
+list devices`). See the slice-9 decision log in `PROGRESS.md`.
+
+- `devicectl-devices.json` — two paired iPhones: one with `developerModeStatus: "disabled"`
+  (ineligible — Developer Mode off), one with it `"enabled"` (eligible). Both are
+  tunnel-disconnected (`tunnelState` not `"connected"`), so neither reads as connected. Drives
+  the parse → `[Device]` mapping and the eligibility verdicts.
+- `devicectl-apps-empty.json` — the **real** `device info apps` response envelope, but with an
+  empty `apps` array (the only populated-vs-empty shape capturable here: the paired devices'
+  tunnels are down). Populated app-entry → `Target` mapping (incl. development-signed detection)
+  is **deferred** to the manual smoke, where a fully-connected device with installed dev apps
+  yields a real entry schema to verify against. The slice ships device discovery + the verified
+  `device info apps` command shape; this envelope is kept for that deferred parser.

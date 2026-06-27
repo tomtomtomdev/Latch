@@ -65,6 +65,29 @@ struct XctraceDiagnosticRunnerTests {
         #expect(result.kind == .hitches)
     }
 
+    // iOS routing (PLAN slice 9): when the target lives on a device, the runner inserts
+    // `--device <udid>` (the hardware UDID `xctrace` keys on, verified against `xctrace list
+    // devices`) ahead of the attach so the recording happens on the device, not the host.
+    // Local-Mac targets carry no `deviceUDID`, so the host path above stays `--device`-free.
+    @Test func run_routesThroughDeviceUDID_forIOSDeviceTargets() async throws {
+        let (xctrace, command) = runner(exitCode: 0)
+        let iosTarget = Target(
+            id: "ios-700", kind: .iOSDevice, pid: 700,
+            displayName: "MyApp", deviceUDID: "00008030-000000000000002E"
+        )
+
+        let result = try await xctrace.run(iosTarget, options: DiagnosticOptions(timeLimit: .seconds(5)))
+
+        #expect(command.arguments == [
+            "xctrace", "record", "--template", "Leaks",
+            "--device", "00008030-000000000000002E",
+            "--attach", "700",
+            "--time-limit", "5s",
+            "--output", "/tmp/latch-traces/Latch-leaks-700.trace",
+        ])
+        #expect(result.tracePath == "/tmp/latch-traces/Latch-leaks-700.trace")
+    }
+
     // The deep attach needs the debugger entitlement to acquire the task port; when it can't
     // (the real failure captured during development), the runner surfaces the tool's error
     // honestly rather than pretending the trace is valid. (SPEC §1)

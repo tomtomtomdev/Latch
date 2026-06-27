@@ -39,12 +39,18 @@ public struct XctraceDiagnosticRunner: DiagnosticRunner {
         }
         let tracePath = URL(fileURLWithPath: outputDirectory)
             .appendingPathComponent("Latch-\(slug)-\(pid).trace").path
-        let result = try await commandRunner.run("/usr/bin/xcrun", arguments: [
-            "xctrace", "record", "--template", template,
+        var arguments = ["xctrace", "record", "--template", template]
+        // Route to a connected iOS device when the target lives on one; otherwise xctrace
+        // records on the host. The hardware UDID is the key `xctrace --device` expects. (PLAN slice 9)
+        if let deviceUDID = target.deviceUDID {
+            arguments += ["--device", deviceUDID]
+        }
+        arguments += [
             "--attach", "\(pid)",
             "--time-limit", "\(options.timeLimit.components.seconds)s",
             "--output", tracePath,
-        ])
+        ]
+        let result = try await commandRunner.run("/usr/bin/xcrun", arguments: arguments)
         guard result.exitCode == 0 else {
             throw DiagnosticError.toolFailed(exitCode: result.exitCode, message: result.stderr)
         }

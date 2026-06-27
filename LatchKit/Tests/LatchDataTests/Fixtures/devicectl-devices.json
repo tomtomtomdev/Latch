@@ -1,0 +1,191 @@
+{
+  "info": {
+    "arguments": [
+      "devicectl",
+      "list",
+      "devices",
+      "--quiet",
+      "--json-output",
+      "/tmp/latch-devicectl/devices.json"
+    ],
+    "commandType": "devicectl.list.devices",
+    "environment": {
+      "TERM": "xterm-256color"
+    },
+    "jsonVersion": 3,
+    "outcome": "success",
+    "version": "518.31"
+  },
+  "result": {
+    "devices": [
+      {
+        "capabilities": [
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.tags",
+            "name": "Modify Tags"
+          },
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.default.user.credentials",
+            "name": "Modify credentials for default users for a device"
+          },
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.unpairdevice",
+            "name": "Unpair Device"
+          }
+        ],
+        "connectionProperties": {
+          "authenticationType": "manualPairing",
+          "isMobileDeviceOnly": false,
+          "lastConnectionDate": "2026-05-27T15:38:00.000Z",
+          "pairingState": "paired",
+          "potentialHostnames": [
+            "Latch-Test-iPhone-(dev-mode-off).coredevice.local",
+            "AAAAAAAA-1111-2222-3333-444444444444.coredevice.local"
+          ],
+          "tunnelState": "unavailable"
+        },
+        "deviceProperties": {
+          "ddiServicesAvailable": false,
+          "developerModeStatus": "disabled",
+          "hasInternalOSBuild": false,
+          "name": "Latch Test iPhone (dev mode off)",
+          "osBuildUpdate": "22F76",
+          "osVersionNumber": "18.5"
+        },
+        "hardwareProperties": {
+          "cpuType": {
+            "name": "arm64e",
+            "subType": -2147483646,
+            "type": 16777228
+          },
+          "deviceType": "iPhone",
+          "ecid": 111111111111110,
+          "hardwareModel": "D27AP",
+          "isProductionFused": true,
+          "marketingName": "iPhone 14",
+          "platform": "iOS",
+          "productType": "iPhone14,7",
+          "reality": "physical",
+          "serialNumber": "LATCHTEST0A",
+          "supportedCPUTypes": [
+            {
+              "name": "arm64e",
+              "subType": 2,
+              "type": 16777228
+            },
+            {
+              "name": "arm64",
+              "subType": 0,
+              "type": 16777228
+            },
+            {
+              "name": "unknown-12-13",
+              "subType": 13,
+              "type": 12
+            }
+          ],
+          "supportedDeviceFamilies": [
+            1
+          ],
+          "thinningProductType": "iPhone14,7",
+          "udid": "00008110-000000000000001A"
+        },
+        "identifier": "AAAAAAAA-1111-2222-3333-444444444444",
+        "tags": [],
+        "visibilityClass": "default"
+      },
+      {
+        "capabilities": [
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.acquireusageassertion",
+            "name": "Acquire Usage Assertion"
+          },
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.connectdevice",
+            "name": "Connect to Device"
+          },
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.tags",
+            "name": "Modify Tags"
+          },
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.default.user.credentials",
+            "name": "Modify credentials for default users for a device"
+          },
+          {
+            "featureIdentifier": "com.apple.coredevice.feature.unpairdevice",
+            "name": "Unpair Device"
+          }
+        ],
+        "connectionProperties": {
+          "authenticationType": "manualPairing",
+          "isMobileDeviceOnly": false,
+          "lastConnectionDate": "2026-02-26T02:37:00.000Z",
+          "pairingState": "paired",
+          "potentialHostnames": [
+            "Latch-Test-iPhone.coredevice.local",
+            "BBBBBBBB-5555-6666-7777-888888888888.coredevice.local"
+          ],
+          "transportType": "localNetwork",
+          "tunnelState": "disconnected",
+          "tunnelTransportProtocol": "tcp"
+        },
+        "deviceProperties": {
+          "bootedFromSnapshot": true,
+          "bootedSnapshotName": "com.apple.os.update-E3C7D0757829F274ACD2866C04E733289B13F83B1CC8831ACF14877469E926D2",
+          "ddiServicesAvailable": false,
+          "developerModeStatus": "enabled",
+          "hasInternalOSBuild": false,
+          "name": "Latch Test iPhone",
+          "osBuildUpdate": "22B91",
+          "osVersionNumber": "18.1.1",
+          "rootFileSystemIsWritable": false,
+          "screenViewingURL": "coredevice-devices:/viewDeviceByUUID?uuid=BBBBBBBB-5555-6666-7777-888888888888",
+          "supportsCheckedAllocations": false
+        },
+        "hardwareProperties": {
+          "cpuType": {
+            "name": "arm64e",
+            "subType": 2,
+            "type": 16777228
+          },
+          "deviceType": "iPhone",
+          "ecid": 222222222222220,
+          "hardwareModel": "N104AP",
+          "internalStorageCapacity": 64000000000,
+          "isProductionFused": true,
+          "marketingName": "iPhone 11",
+          "platform": "iOS",
+          "productType": "iPhone12,1",
+          "reality": "physical",
+          "serialNumber": "LATCHTEST0B",
+          "supportedCPUTypes": [
+            {
+              "name": "arm64e",
+              "subType": 2,
+              "type": 16777228
+            },
+            {
+              "name": "arm64",
+              "subType": 0,
+              "type": 16777228
+            },
+            {
+              "name": "unknown-12-13",
+              "subType": 13,
+              "type": 12
+            }
+          ],
+          "supportedDeviceFamilies": [
+            1
+          ],
+          "thinningProductType": "iPhone12,1",
+          "udid": "00008030-000000000000002E"
+        },
+        "identifier": "BBBBBBBB-5555-6666-7777-888888888888",
+        "tags": [],
+        "visibilityClass": "default"
+      }
+    ]
+  }
+}

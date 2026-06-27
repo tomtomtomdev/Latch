@@ -16,7 +16,7 @@ to the decision log when a non-obvious choice is made. Never delete history.
 | 6 | Leaks (attach) | ✅ Done | §1, §3.1, §3.2, §4 | Domain `DiagnosticKind`/`DiagnosticRunner`/`DiagnosticResult`/`Finding`/`DiagnosticOptions`/`DiagnosticError`; `LeaksCLIRunner` (`leaks <pid>`) fully TDD'd vs real captured fixtures (0-leaks / with-stacks / no-stacks caveat / error); `XctraceDiagnosticRunner` records the verified Leaks trace + returns `.trace` path (export parser **deferred** — entitlement wall, chosen with user); `VitalsModel.checkLeaks()`/`recordLeakTrace()` + Leaks UI section (findings, MallocStackLogging caveat, Open in Instruments) |
 | 7 | Zombies (relaunch) | ✅ Done | §1, §3.2, §3.3 | **No `Zombies` Instruments template/instrument exists** (verified) → pivoted to the §1-sanctioned mechanism: `ZombieDiagnosticRunner` relaunches the target via `/usr/bin/env NSZombieEnabled=YES <exe>` and parses the runtime's `message sent to deallocated instance` stderr into `Finding`s (real captured fixtures). `requiresRelaunch = true`; `Target.executablePath` added (threaded through discovery); `DiagnosticError.targetHasNoExecutablePath`. `VitalsModel.checkZombies()` + `canCheckZombies` (gated on runner **and** path); relaunch-honest Zombies UI in extracted `DeepDiagnosticsView`. Live relaunch validated in manual smoke. |
 | 8 | Hitches & hangs | ✅ Done | §3.3 | Domain pure `DetectHangs` heuristic (stack series → `[Hang]`, consecutive run > 250 ms) + `StackSample`/`Hang`/`DiagnosticKind.hitches`; `SampleDiagnosticRunner` (verified same-UID `sample <pid>`, parses main-thread call tree → series → DetectHangs, real fixtures); `XctraceDiagnosticRunner` generalized to `.hitches`→`Time Profiler` (export deferred — entitlement wall); `spindump` **deferred** (needs root). `VitalsModel.checkHitches()`/`recordHitchTrace()` + Hitches & Hangs UI (honest sampling-hint caveat) |
-| 9 | iOS device support | ⬜ Not started | §1 | dev-signed only |
+| 9 | iOS device support | ✅ Done | §1, §3.1, §3.2, §4 | Domain `Device` + pure `TargetEligibility`/`IneligibilityReason` (paired + Developer Mode + dev-signed gate, honest messages); `TargetDiscovery` grew `devices()`/`apps(on:)` (empty defaults). `DevicectlTargetDiscovery` parses **real captured** `devicectl list devices` JSON (via `--json-output` temp file) → `[Device]`; `XctraceDiagnosticRunner` routes via `--device <udid>` (hardware UDID, verified). On-device app/process enumeration **deferred** (tunnel-disconnected devices → no populated fixture) |
 | 10 | Session report & export | ⬜ Not started | §4 | — |
 | 11 | Main window shell + live timeline | ⬜ Not started | §8 | Design handoff; honest live lanes only |
 | 12 | Detection inbox + diagnostic detail | ⬜ Not started | §8 | Provenance-tagged feed (live alerts + deep findings) |
@@ -31,6 +31,24 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
 - ⚠️ **The `powermetrics` plist fixture is synthesized from `man powermetrics`, not captured live** (capturing needs root; Latch never runs silent `sudo`). The `tasks`/`energy_impact` plist shape is an assumption that MUST be validated against a real privileged run in the manual integration smoke before the measured-energy path is trusted in production. (SPEC §6, §7; Slice 5)
 - No privileged escalation path yet: `PowermetricsSource` runs through the plain `ProcessCommandRunner`, so measured energy only works if Latch itself runs as root; otherwise it degrades. An `SMAppService`/authorization helper is deferred. (SPEC §5, Slice 5)
 - iOS limited to development-signed apps on connected devices. (SPEC §1, Slice 9)
+- ⚠️ **On-device app/process enumeration is deferred.** `DevicectlTargetDiscovery.devices()`
+  (`devicectl list devices`) is built + verified against **real captured** JSON, but populated
+  `device info apps`/`processes` parsing is **deferred to the manual smoke**: both paired iPhones
+  in the dev environment are tunnel-disconnected (`xctrace list devices` lists them "Offline"), so
+  `apps`/`processes` return empty and a real *entry* schema can't be captured. Per rule #4
+  (never hardcode JSON shapes from memory) the entry→`Target` parser + dev-signed detection is built
+  against a real fixture once a fully-connected device with installed dev apps is available. The
+  Domain dev-signed gate (`Device.eligibility(forApp:)`) is built + tested, ready to wire. (SPEC §1, §6; Slice 9)
+- The `Device.isConnected` mapping (`connectionProperties.tunnelState == "connected"`) is an
+  **assumption for the positive case**: only `"unavailable"`/`"disconnected"` were observable here
+  (both map to not-connected, consistent with `xctrace` showing the devices "Offline"); the exact
+  `"connected"` string must be confirmed in the smoke against a live-connected device. Eligibility
+  does **not** gate on connection (it's transient readiness, not an intrinsic verdict), so a wrong
+  `"connected"` guess can't mislabel a device as ineligible. (SPEC §7; Slice 9)
+- iOS UI surfacing (a device list + per-target ineligibility messages in the picker/sidebar) is
+  **not** wired this slice — it lands with the design-handoff sidebar redesign (Slice 11), which
+  rebuilds the picker; bolting devices onto the interim picker would be throwaway. The Domain
+  messages (`IneligibilityReason.message`) and discovery are ready to bind. (SPEC §8; Slice 9)
 - ⚠️ **The `xctrace` Leaks export parser is deferred.** `XctraceDiagnosticRunner` records the
   verified trace and returns its `.trace` path (open in Instruments) but does **not** parse
   `xctrace export` into `Finding`s. The deep `--attach` needs the debugger entitlement to
@@ -115,8 +133,39 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
 | 2026-06-26 | Regex literals in `LeaksCLIRunner` are declared **function-local**, not `static let` | Swift 6 strict concurrency: `Regex` is not `Sendable`, so a shared `static let` Regex is a `#MutableGlobalVariable` concurrency error. Each pattern is used in one place, so a local `let` is both correct and clean |
 | 2026-06-26 | `VitalsModel` stores the full `Target` (optional) alongside `pid` for the deep runners | `DiagnosticRunner.run(_:options:)` attaches by `Target` (SPEC §3.1) while live polling needs only `pid`; adding an optional `target` is the thinnest change that keeps the existing pid-based polling tests untouched. `runDiagnostic` extracted (Fowler: Extract Function + Parameterize Function) so `checkLeaks`/`recordLeakTrace` differ only in which fields they write — same move as slice 4's `sustainedAlert` |
 | 2026-06-26 | Adopt `design_handoff_latch_profiler/` as the authoritative UI/visual spec (hi-fi) — recorded as SPEC §8; redesign scheduled as PLAN slices 11–13 (chosen with the user) | The handoff has sat in the repo since the initial scaffold commit but was never referenced by SPEC/PLAN/PROGRESS/CLAUDE, and the UI built across slices 1–6 is a minimal functional dashboard, not the handoff. Per rule #1 (spec-driven), SPEC is updated first. The redesign is sequenced **after** the data slices it visualizes (timeline lanes ← slices 2/4/5/8; detection inbox ← slices 6–8/10), so it lands as slices 11 (main window + live timeline), 12 (detection inbox + diagnostic detail), 13 (menu-bar companion, promoted from backlog). The prototype fakes all data; SPEC §8 carries a **binding** reconciliation where the handoff conflicts with §1 honest constraints — §1 wins: no live zombie lane (relaunch-only), Frame-time is a hint/deep run not a live counter, energy live lane is the watts estimate, symbolicated call trees/stacks are on-demand deep-run output (provenance shown per card), iOS is dev-signed-device-only and watchOS is out of scope, and live sampling stays ~1 Hz (faster canvas redraw is presentation-only) |
+| 2026-06-27 | Slice 9 ships `devices()` fully (real fixture); **on-device app/process enumeration deferred** (chosen by the verify-then-use rule) | Verified on Xcode 26.5 / devicectl 518.31: two real paired iPhones (one Developer-Mode-off → ineligible, one on → eligible) gave a genuine, sanitizable `list devices` fixture, so device discovery + eligibility tagging are fully TDD'd against real shape. But both devices' tunnels are disconnected (`xctrace list devices` → "Devices Offline"; `device info apps` returns success with an empty `apps` array), so a populated app/process **entry** schema can't be captured. Per rule #4 (never hardcode Apple JSON shapes from memory) and §1 (no fake capabilities), building that entry parser now would be guessing — so it's deferred to the manual smoke, exactly like slices 5/6/8 deferred root/entitlement-gated parsing. The dev-signed gate logic (`Device.eligibility(forApp:)`) is still built + tested in Domain, ready to wire |
+| 2026-06-27 | `devicectl` routed through the existing `CommandRunner` but writing JSON to a **temp file** (not stdout); a `DevicectlStubRunner` double writes the fixture to the `--json-output` path | `devicectl --help` states JSON-to-a-user-file is the **ONLY** supported machine interface; stdout's human table is explicitly unstable, and `/dev/stdout` for `--json-output` is unreliable (verified: atomic write fails, "Operation not supported"). So the adapter passes `--json-output <dir>/latch-devicectl-devices.json`, runs via `CommandRunner`, then `Data(contentsOf:)`-reads the file. To keep it testable behind the one existing seam (not a second command abstraction), the test double faithfully emulates devicectl — it writes the canned fixture to the path found in the args and records the invocation — so the adapter is exercised end-to-end (command pinned + real file read + Codable parse) without real hardware |
+| 2026-06-27 | `TargetDiscovery` grew `devices()`/`apps(on:)` with **empty default impls for all three methods** (incl. `localProcesses()`), not split protocols | SPEC §3.1 defines one `TargetDiscovery` surface (local + devices + apps); rule #1 makes the spec truth, so honoring it beats an ISP split (which would need a spec change first). Default "this source offers none of that kind" impls let each adapter override only what it serves — `LibprocTargetDiscovery` → `localProcesses()`, `DevicectlTargetDiscovery` → `devices()` — and keep the App's `FakeTargetDiscovery` (local-only) compiling unchanged. Symmetric and honest: an empty result means "this source surfaces no targets of that kind" |
+| 2026-06-27 | Eligibility split into **intrinsic verdict** (`profilingEligibility`: iOS + paired + Developer Mode; + app dev-signed) vs **transient readiness** (`isConnected`); `udid` = the `xctrace --device` key | "Eligible" should mean *configured to be profilable*, a stable fact that yields a clear ineligible *reason* + message (the slice's tested deliverable). Connection is transient — an eligible-but-unplugged device should say "connect it", not "can't be profiled" — so it's surfaced separately and never gates the verdict. This also sidesteps an unverifiable guess: only `tunnelState` `"unavailable"`/`"disconnected"` were observable (the `"connected"` positive is smoke-confirmed), and since eligibility ignores connection, a wrong guess can't mislabel a device. `Device.udid` carries `hardwareProperties.udid` because `xctrace list devices` identifies devices by hardware UDID, **not** the CoreDevice `identifier` (verified) |
 
 ## Changelog
+- 2026-06-27 — **Slice 9 (iOS device support) landed.** Verification first (golden rule #4)
+  established the honest shape against the on-machine tools (Xcode 26.5 / devicectl 518.31):
+  `devicectl --help` documents JSON-to-a-user-file (`--json-output`) as the **only** stable machine
+  interface (stdout's table is explicitly unstable; `/dev/stdout` fails the atomic write), and
+  `xctrace record --device <name|UDID>` (composing with `--attach`) keys on the **hardware UDID**
+  (`xctrace list devices` shows hardware UDIDs, not the CoreDevice `identifier`). Two real paired
+  iPhones gave a genuine, sanitizable `list devices` fixture (one Developer-Mode-off → ineligible,
+  one on → eligible). Domain: `Device` (udid/name/platform/osVersion/paired/developerMode/connected),
+  pure `TargetEligibility`/`IneligibilityReason` with honest, actionable messages (intrinsic verdict
+  = iOS + paired + Developer Mode + app dev-signed; connection is separate transient readiness),
+  `TargetDiscovery` extended with `devices()`/`apps(on:)` (empty defaults so each adapter overrides
+  only what it serves), and `TargetDiscoveryError`. Data: `DevicectlTargetDiscovery` runs `xcrun
+  devicectl list devices --quiet --json-output <file>`, reads the file, and Codable-decodes it into
+  `[Device]`; `XctraceDiagnosticRunner` inserts `--device <udid>` ahead of `--attach` for
+  device-backed targets (local-Mac path unchanged). TDD red-first: Domain `DeviceEligibilityTests`
+  (eligible / dev-mode-off / unpaired / non-iOS / app dev-signed gate / message copy); Data
+  `DevicectlTargetDiscoveryTests` (parse real fixture → 2 Devices + their eligibility verdicts /
+  exact verified command / non-zero exit throws) via a `DevicectlStubRunner` that faithfully
+  emulates devicectl (writes the fixture to the `--json-output` path); Data
+  `XctraceDiagnosticRunnerTests` gained the iOS `--device` routing case. `swift test` green (91/91),
+  `xcodebuild test` green (app + UI), zero compiler/concurrency warnings; new files lint-clean
+  apart from the documented repo-wide `trailing_comma` 0.59.1 drift (matched to sibling adapters).
+  ⚠️ **On-device app/process enumeration is deferred** — the paired devices are tunnel-disconnected
+  (`xctrace` "Offline"), so a populated entry schema can't be captured; per rule #4 that parser +
+  dev-signed detection is built in the manual smoke (the Domain gate is ready). iOS **UI surfacing**
+  lands with the Slice-11 sidebar redesign (the interim picker is replaced there). See the slice-9
+  decision log + live-risk notes.
 - 2026-06-27 — **Slice 8 (Hitches & hangs) landed.** Verification first (golden rule #4)
   established the honest shape: `sample <pid> <s> <ms>` profiles a same-UID process **without
   root** (exit 0; missing process → 255) — Latch's verified hitch/hang quick look — whereas
