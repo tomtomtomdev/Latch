@@ -3,8 +3,8 @@
 /// An attachable target: a local macOS process, or an app on a connected iOS device.
 /// Device-backed targets arrive in the iOS slice; for now only `.localMac` is produced.
 /// (SPEC §4)
-public struct Target: Identifiable, Sendable, Equatable {
-    public enum Kind: Sendable, Equatable {
+public struct Target: Identifiable, Sendable, Equatable, Codable {
+    public enum Kind: String, Sendable, Equatable, Codable {
         case localMac
         case iOSDevice
     }

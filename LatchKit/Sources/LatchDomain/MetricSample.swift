@@ -5,7 +5,7 @@
 /// the entity the dashboard charts and thresholds consume. Network, disk, and energy
 /// fields from SPEC §4 arrive in later slices — only the live mem+CPU signals exist
 /// here. (SPEC §4; PLAN slice 2)
-public struct MetricSample: Sendable, Equatable {
+public struct MetricSample: Sendable, Equatable, Codable {
     /// CPU usage as a percentage of **one core**: 100 means one core fully busy, 200
     /// means two. Matches the "% of one core" threshold in SPEC §3.3.
     public let cpuPercent: Double

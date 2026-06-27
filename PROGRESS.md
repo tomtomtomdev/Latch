@@ -17,7 +17,7 @@ to the decision log when a non-obvious choice is made. Never delete history.
 | 7 | Zombies (relaunch) | ✅ Done | §1, §3.2, §3.3 | **No `Zombies` Instruments template/instrument exists** (verified) → pivoted to the §1-sanctioned mechanism: `ZombieDiagnosticRunner` relaunches the target via `/usr/bin/env NSZombieEnabled=YES <exe>` and parses the runtime's `message sent to deallocated instance` stderr into `Finding`s (real captured fixtures). `requiresRelaunch = true`; `Target.executablePath` added (threaded through discovery); `DiagnosticError.targetHasNoExecutablePath`. `VitalsModel.checkZombies()` + `canCheckZombies` (gated on runner **and** path); relaunch-honest Zombies UI in extracted `DeepDiagnosticsView`. Live relaunch validated in manual smoke. |
 | 8 | Hitches & hangs | ✅ Done | §3.3 | Domain pure `DetectHangs` heuristic (stack series → `[Hang]`, consecutive run > 250 ms) + `StackSample`/`Hang`/`DiagnosticKind.hitches`; `SampleDiagnosticRunner` (verified same-UID `sample <pid>`, parses main-thread call tree → series → DetectHangs, real fixtures); `XctraceDiagnosticRunner` generalized to `.hitches`→`Time Profiler` (export deferred — entitlement wall); `spindump` **deferred** (needs root). `VitalsModel.checkHitches()`/`recordHitchTrace()` + Hitches & Hangs UI (honest sampling-hint caveat) |
 | 9 | iOS device support | ✅ Done | §1, §3.1, §3.2, §4 | Domain `Device` + pure `TargetEligibility`/`IneligibilityReason` (paired + Developer Mode + dev-signed gate, honest messages); `TargetDiscovery` grew `devices()`/`apps(on:)` (empty defaults). `DevicectlTargetDiscovery` parses **real captured** `devicectl list devices` JSON (via `--json-output` temp file) → `[Device]`; `XctraceDiagnosticRunner` routes via `--device <udid>` (hardware UDID, verified). On-device app/process enumeration **deferred** (tunnel-disconnected devices → no populated fixture) |
-| 10 | Session report & export | ⬜ Not started | §4 | — |
+| 10 | Session report & export | ✅ Done | §3.1, §4, §8 | Domain `SessionReport` (Codable: target + metric timeline + alert log + `DiagnosticResult` summaries + `.trace` paths + per-metric `MetricProvenance`) with a pure `markdownSummary`; `ExportReport` use case bundles the session and **derives** deep-run provenance from each diagnostic (`DiagnosticKind`→`SignalKind`); `MetricProvenance`/`SamplingMode`(`.livePoll`/`.deepRun`). `Codable` added to the reused Domain types (stdlib only — Domain stays Foundation-free). Data `JSONReportSerializer` (Foundation `JSONEncoder`/`Decoder`, sorted-keys pretty JSON) owns the round-trip. UI export trigger (Save panel + file write) **deferred** to the slice-11 redesign |
 | 11 | Main window shell + live timeline | ⬜ Not started | §8 | Design handoff; honest live lanes only |
 | 12 | Detection inbox + diagnostic detail | ⬜ Not started | §8 | Provenance-tagged feed (live alerts + deep findings) |
 | 13 | Menu-bar companion (mini mode) | ⬜ Not started | §8 | Promoted from backlog |
@@ -49,6 +49,16 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
   **not** wired this slice — it lands with the design-handoff sidebar redesign (Slice 11), which
   rebuilds the picker; bolting devices onto the interim picker would be throwaway. The Domain
   messages (`IneligibilityReason.message`) and discovery are ready to bind. (SPEC §8; Slice 9)
+- The session-report **export trigger** (a "Save report…" `NSSavePanel` + writing the JSON/Markdown
+  bytes to disk) is **not** wired this slice — it is a toolbar/UI action that lands with the
+  design-handoff main window (Slice 11). Slice 10 ships the full Domain assembly + provenance +
+  Markdown and the Data-layer JSON round-trip (`JSONReportSerializer`); the bytes are produced and
+  verified, only the user-facing trigger + file write remain. (SPEC §8; Slice 10)
+- The `SessionReport` metric timeline is **ordered but not time-stamped** — `MetricSample` carries
+  no `timestamp` (the Domain is clock-free; SPEC §4 lists one aspirationally). The Markdown summary
+  reports counts and peaks, not wall-clock spans; the timestamped `DiagnosticRun`
+  (startedAt/finishedAt) is likewise deferred. Add timestamps when SwiftData persistence lands a
+  clock at the boundary. (SPEC §4; Slice 10)
 - ⚠️ **The `xctrace` Leaks export parser is deferred.** `XctraceDiagnosticRunner` records the
   verified trace and returns its `.trace` path (open in Instruments) but does **not** parse
   `xctrace export` into `Finding`s. The deep `--attach` needs the debugger entitlement to
@@ -138,7 +148,34 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
 | 2026-06-27 | `TargetDiscovery` grew `devices()`/`apps(on:)` with **empty default impls for all three methods** (incl. `localProcesses()`), not split protocols | SPEC §3.1 defines one `TargetDiscovery` surface (local + devices + apps); rule #1 makes the spec truth, so honoring it beats an ISP split (which would need a spec change first). Default "this source offers none of that kind" impls let each adapter override only what it serves — `LibprocTargetDiscovery` → `localProcesses()`, `DevicectlTargetDiscovery` → `devices()` — and keep the App's `FakeTargetDiscovery` (local-only) compiling unchanged. Symmetric and honest: an empty result means "this source surfaces no targets of that kind" |
 | 2026-06-27 | Eligibility split into **intrinsic verdict** (`profilingEligibility`: iOS + paired + Developer Mode; + app dev-signed) vs **transient readiness** (`isConnected`); `udid` = the `xctrace --device` key | "Eligible" should mean *configured to be profilable*, a stable fact that yields a clear ineligible *reason* + message (the slice's tested deliverable). Connection is transient — an eligible-but-unplugged device should say "connect it", not "can't be profiled" — so it's surfaced separately and never gates the verdict. This also sidesteps an unverifiable guess: only `tunnelState` `"unavailable"`/`"disconnected"` were observable (the `"connected"` positive is smoke-confirmed), and since eligibility ignores connection, a wrong guess can't mislabel a device. `Device.udid` carries `hardwareProperties.udid` because `xctrace list devices` identifies devices by hardware UDID, **not** the CoreDevice `identifier` (verified) |
 
+| 2026-06-27 | Slice 10 reuses `DiagnosticResult` for the report's diagnostic summaries; the timestamped `DiagnosticRun` (startedAt/finishedAt) from SPEC §4 is **deferred** | The Domain is deliberately clock-free (decision 2026-06-26: `Alert` omits `firedAt`; `MetricSample` has no timestamp), and slice 10's required tests ("serialization round-trips; includes provenance per metric") need no wall-clock run times. `DiagnosticResult` (the type shipped since slice 6) already carries kind/summary/findings/`tracePath` — exactly the "diagnostic-run summaries + `.trace` paths" the slice calls for. Introducing `DiagnosticRun` with timestamps now would mean threading a clock through every runner with no test demanding it (YAGNI). Add it when SwiftData persistence introduces a boundary clock. SPEC §4 updated to record the reuse + deferral (rule #1) |
+| 2026-06-27 | Provenance recorded **at the report level, per source** (not per `MetricSample`); `MetricProvenance.source` is a free-form label, not a Data class name; `ExportReport` derives deep-run provenance from the diagnostics | "Provenance per metric" (SPEC §4/§8) means *which mechanism produced each signal, live vs deep*. The producing source is constant across a session, so tagging every one of up to 3600 samples would bloat the timeline for no gain — a per-signal list on the report is the honest, compact model. `source` is a `String` (e.g. `proc_pid_rusage`, `Leaks`) so the **Domain stays decoupled from Data adapter class names** (the caller that wired the adapters supplies the live labels). `ExportReport` earns its keep by mapping each `DiagnosticResult`→a `.deepRun` `MetricProvenance` (`DiagnosticKind`→`SignalKind` + a SPEC §3.2 mechanism label), so the report is self-describing about its deep runs without the caller re-stating them |
+| 2026-06-27 | JSON serialization lives in a **Data-layer `JSONReportSerializer`** (Foundation); the Domain only declares `Codable` conformance (stdlib) and renders Markdown with a hand-rolled formatter | The Domain has imported **nothing** since slice 0 (not even Foundation — it is clock- and `Date`-free). `Codable`/`Encodable`/`Decodable` are Swift stdlib protocols, so the Domain types conform without a Foundation import; the `JSONEncoder`/`JSONDecoder` round-trip (Foundation) sits behind the Data boundary like every other adapter (SPEC §3.2). The Markdown 1-decimal formatting uses integer arithmetic (`String(format:)` is Foundation), keeping the renderer pure. So the round-trip test is a **Data** test and the assembly/provenance/Markdown tests are **Domain** tests — each in the layer that owns the concern. `markdownSummary` lives on `SessionReport` (a value that describes itself), decomposed into small per-section properties |
+
 ## Changelog
+- 2026-06-27 — **Slice 10 (Session report & export) landed.** Domain gained the export
+  vocabulary: `SamplingMode` (`.livePoll`/`.deepRun` — SPEC §1's two modes), `MetricProvenance`
+  (`signal` + free-form `source` label + `mode`), and `SessionReport` (Codable bundle of the
+  target, metric timeline, alert log, `DiagnosticResult` summaries with their `.trace` paths, and
+  the per-metric provenance) with a pure `markdownSummary` (target + sample count + peaks +
+  provenance table + alerts + diagnostics, every section honest when empty). The `ExportReport`
+  use case bundles a session and **derives** a `.deepRun` provenance entry for each diagnostic
+  (`DiagnosticKind`→`SignalKind` + a SPEC §3.2 mechanism label), so the caller supplies only the
+  live-poller provenance. `Codable` was added to the reused Domain types (`Target`/`Target.Kind`,
+  `MetricSample`, `SignalKind`, `AlertSeverity`, `Alert`, `Finding`, `DiagnosticKind`,
+  `DiagnosticResult`) — stdlib only, so the Domain stays Foundation-free and clock-free. Data
+  gained `JSONReportSerializer` (Foundation `JSONEncoder`/`Decoder`, `.prettyPrinted`/`.sortedKeys`
+  for a stable, diffable bundle) — the round-trip boundary. TDD red-first: Domain `ExportReportTests`
+  (bundles timeline/alerts/diagnostics / records live + derived-deep provenance / Markdown lists
+  target+samples+provenance+alerts+diagnostics+trace path / honest empty-session Markdown); Data
+  `JSONReportSerializerTests` (encode→decode round-trips the full report / the JSON text actually
+  contains the provenance per metric). `swift test` green (97/97), `xcodebuild test` green (app +
+  UI), zero compiler/concurrency warnings; new files lint-clean apart from the documented repo-wide
+  `trailing_comma` 0.59.1 drift (matched to sibling files). No system-tool API was touched (pure
+  serialization), so rule #4 verification was N/A this slice.
+  ⚠️ The **export trigger** (Save panel + file write) and **timestamps** (clock-free Domain →
+  ordered-not-stamped timeline; `DiagnosticRun` startedAt/finishedAt deferred) are deferred — see
+  the slice-10 decision log + live-risk notes; the trigger lands with the Slice-11 main window.
 - 2026-06-27 — **Slice 9 (iOS device support) landed.** Verification first (golden rule #4)
   established the honest shape against the on-machine tools (Xcode 26.5 / devicectl 518.31):
   `devicectl --help` documents JSON-to-a-user-file (`--json-output`) as the **only** stable machine

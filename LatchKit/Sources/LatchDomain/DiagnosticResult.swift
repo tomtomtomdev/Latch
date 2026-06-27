@@ -3,7 +3,7 @@
 /// One leaked allocation (or a group of identical ones sharing an allocation site) reported
 /// by a leak diagnostic. `backtrace` is non-empty only when the target was launched with
 /// `MallocStackLogging` — that is the part that says *where* the leak came from. (SPEC §1, §3.3)
-public struct Finding: Sendable, Equatable {
+public struct Finding: Sendable, Equatable, Codable {
     /// A human-readable signature: the leaked type / allocation site (e.g.
     /// `ROOT LEAK: <malloc in make_leak>`), or just the block address when no symbol is known.
     public let title: String
@@ -27,7 +27,7 @@ public struct Finding: Sendable, Equatable {
 /// the path to the recorded `.trace` bundle when the run produced one (so the user can open
 /// the full analysis in Instruments — Latch summarizes, it does not re-implement the viewer).
 /// (SPEC §1, §4; PLAN slice 6)
-public struct DiagnosticResult: Sendable, Equatable {
+public struct DiagnosticResult: Sendable, Equatable, Codable {
     public let kind: DiagnosticKind
     public let summary: String
     public let findings: [Finding]

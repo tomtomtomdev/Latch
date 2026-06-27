@@ -173,6 +173,16 @@ Each adapter is replaceable by a `Fake…` double in tests. No adapter leaks `Pr
 - `Threshold { signal, comparator, value, window }`
 - `Alert { signal, severity, firedAt, sample }`
 - `DiagnosticRun { kind, startedAt, finishedAt, tracePath?, summary, findings: [Finding] }`
+- `MetricProvenance { signal, source, mode: .livePoll | .deepRun }` — records which mechanism
+  produced a metric and whether it came from cheap live polling or an on-demand deep run, so a
+  shared report stays honest about how each figure was obtained. Recorded once per source at the
+  report level (the source is constant across a session). (§1, §8)
+- `SessionReport { target, metrics, alerts, diagnostics, provenance }` — a shareable snapshot of
+  one session (metric timeline + alert log + diagnostic summaries + `.trace` paths + per-metric
+  provenance). Assembled by the `ExportReport` use case and rendered to a JSON bundle (Data-layer
+  `JSONReportSerializer`) plus an optional Markdown summary. It reuses `DiagnosticResult` for the
+  run summaries; the timestamped `DiagnosticRun` (startedAt/finishedAt) is **deferred** — the
+  Domain is clock-free and no slice-10 test needs wall-clock run times. (§4; PLAN slice 10)
 
 Live samples are a ring buffer per target (cap memory; e.g. 1 h at 1 Hz). Samples
 and diagnostic runs persist via SwiftData (offline, provenance-aware: every value

@@ -2,7 +2,7 @@
 
 /// How loud an alert is. Threshold breaches are warnings today; `critical` is reserved
 /// for tiered signals (e.g. the energy "high" tier in a later slice). (SPEC §4)
-public enum AlertSeverity: String, Sendable {
+public enum AlertSeverity: String, Sendable, Codable {
     case warning
     case critical
 }
@@ -12,7 +12,7 @@ public enum AlertSeverity: String, Sendable {
 /// active alert per signal at a time. The wall-clock `firedAt` and persistence are added
 /// when sessions are stored (SPEC §4, slice 10) — kept out here to keep the Domain
 /// evaluation pure and deterministic. (SPEC §4)
-public struct Alert: Sendable, Equatable, Identifiable {
+public struct Alert: Sendable, Equatable, Identifiable, Codable {
     public let signal: SignalKind
     public let severity: AlertSeverity
     public let sample: MetricSample

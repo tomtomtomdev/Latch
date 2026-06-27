@@ -3,7 +3,7 @@
 /// The kind of deep, on-demand diagnostic a `DiagnosticRunner` performs. Cases arrive with
 /// their slices rather than as speculative stubs; `.hitch`, `.allocations`, etc. land later.
 /// (SPEC §3.1; PLAN slices 6–8)
-public enum DiagnosticKind: Sendable, Equatable {
+public enum DiagnosticKind: String, Sendable, Equatable, Codable {
     case leaks
     /// Over-released objects, detected by relaunching the target under `NSZombieEnabled`.
     /// Cannot attach to a running process — see `DiagnosticRunner.requiresRelaunch`. (SPEC §1)
