@@ -47,8 +47,16 @@ final class VitalsModel {
     /// Whether any on-demand deep diagnostic (leak check, trace recording, or zombie check) is
     /// in flight — drives the progress spinner shared by those actions.
     private(set) var isRunningDiagnostic = false
+    /// The visible span of the timeline (30s/1m/5m). Trims `visibleSamples`; the full ring
+    /// buffer is retained regardless. (SPEC §8; PLAN slice 11)
+    var range: TimelineRange = .oneMinute
+    /// Whether live sampling is frozen. A paused poll advances nothing; resuming rebaselines so
+    /// the first post-resume sample isn't a bogus delta spanning the paused gap. (SPEC §8)
+    private(set) var isPaused = false
 
     var latest: MetricSample? { samples.last }
+    /// The trailing samples within the selected `range` — what the timeline actually draws.
+    var visibleSamples: [MetricSample] { Array(samples.suffix(range.sampleCount)) }
     /// Whether an on-demand measured-energy read is wired for this target. (SPEC §5)
     var canMeasureEnergy: Bool { energySource != nil }
     /// Whether a quick leak check (`leaks` CLI) is wired for this target. (SPEC §1; PLAN slice 6)
@@ -72,7 +80,8 @@ final class VitalsModel {
     private let zombieRunner: DiagnosticRunner?
     private let hitchRunner: DiagnosticRunner?
     private let hitchTraceRecorder: DiagnosticRunner?
-    private let target: Target?
+    /// The latched target, exposed so the shell's sidebar can label and group each stream.
+    let target: Target?
     private let pid: Int32
     private let capacity: Int
     private let evaluateThresholds = EvaluateThresholds()
@@ -117,6 +126,7 @@ final class VitalsModel {
     /// liveness — its failure surfaces as an error and stops the tick; the network read is
     /// best-effort and never clobbers that error.
     func poll() async {
+        guard !isPaused else { return }
         do {
             let reading = try source.sample(pid: pid)
             let networkRate = await sampleNetworkRate()
@@ -248,6 +258,13 @@ final class VitalsModel {
             return message
         }
         return error.localizedDescription
+    }
+
+    /// Freeze or resume live sampling. Pausing drops the baseline so the first poll after
+    /// resume re-establishes it rather than deriving a delta across the whole paused gap. (SPEC §8)
+    func setPaused(_ paused: Bool) {
+        isPaused = paused
+        if paused { previousReading = nil }
     }
 
     /// Override one signal's threshold value (per-target tuning) and re-evaluate the

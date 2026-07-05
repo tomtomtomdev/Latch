@@ -18,7 +18,7 @@ to the decision log when a non-obvious choice is made. Never delete history.
 | 8 | Hitches & hangs | ✅ Done | §3.3 | Domain pure `DetectHangs` heuristic (stack series → `[Hang]`, consecutive run > 250 ms) + `StackSample`/`Hang`/`DiagnosticKind.hitches`; `SampleDiagnosticRunner` (verified same-UID `sample <pid>`, parses main-thread call tree → series → DetectHangs, real fixtures); `XctraceDiagnosticRunner` generalized to `.hitches`→`Time Profiler` (export deferred — entitlement wall); `spindump` **deferred** (needs root). `VitalsModel.checkHitches()`/`recordHitchTrace()` + Hitches & Hangs UI (honest sampling-hint caveat) |
 | 9 | iOS device support | ✅ Done | §1, §3.1, §3.2, §4 | Domain `Device` + pure `TargetEligibility`/`IneligibilityReason` (paired + Developer Mode + dev-signed gate, honest messages); `TargetDiscovery` grew `devices()`/`apps(on:)` (empty defaults). `DevicectlTargetDiscovery` parses **real captured** `devicectl list devices` JSON (via `--json-output` temp file) → `[Device]`; `XctraceDiagnosticRunner` routes via `--device <udid>` (hardware UDID, verified). On-device app/process enumeration **deferred** (tunnel-disconnected devices → no populated fixture) |
 | 10 | Session report & export | ✅ Done | §3.1, §4, §8 | Domain `SessionReport` (Codable: target + metric timeline + alert log + `DiagnosticResult` summaries + `.trace` paths + per-metric `MetricProvenance`) with a pure `markdownSummary`; `ExportReport` use case bundles the session and **derives** deep-run provenance from each diagnostic (`DiagnosticKind`→`SignalKind`); `MetricProvenance`/`SamplingMode`(`.livePoll`/`.deepRun`). `Codable` added to the reused Domain types (stdlib only — Domain stays Foundation-free). Data `JSONReportSerializer` (Foundation `JSONEncoder`/`Decoder`, sorted-keys pretty JSON) owns the round-trip. UI export trigger (Save panel + file write) **deferred** to the slice-11 redesign |
-| 11 | Main window shell + live timeline | ⬜ Not started | §8 | Design handoff; honest live lanes only |
+| 11 | Main window shell + live timeline | ✅ Done | §8 | Handoff shell in SwiftUI (custom toolbar / sidebar / center live timeline / interim right panel). Pure `LaneKind` (4 honest live lanes CPU/Mem/Net/Energy-**estimate** + **Frame gated as hint**), `TimelineRange`, `TargetHealth` (all `nonisolated`, hex tokens tested); `MainWindowModel` (per-target `VitalsModel` streams + select/attach); `VitalsModel` gained `range`/`visibleSamples` + pause-gated `poll()` w/ clean-resume rebaseline. Sidebar select swaps the streamed target; attach reuses the slice-1 picker. Alerts/energy/deep-runs kept reachable in the interim right panel until the slice-12 inbox. iOS device rows + export trigger still deferred → slice 12 |
 | 12 | Detection inbox + diagnostic detail | ⬜ Not started | §8 | Provenance-tagged feed (live alerts + deep findings) |
 | 13 | Menu-bar companion (mini mode) | ⬜ Not started | §8 | Promoted from backlog |
 
@@ -45,15 +45,24 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
   `"connected"` string must be confirmed in the smoke against a live-connected device. Eligibility
   does **not** gate on connection (it's transient readiness, not an intrinsic verdict), so a wrong
   `"connected"` guess can't mislabel a device as ineligible. (SPEC §7; Slice 9)
-- iOS UI surfacing (a device list + per-target ineligibility messages in the picker/sidebar) is
-  **not** wired this slice — it lands with the design-handoff sidebar redesign (Slice 11), which
-  rebuilds the picker; bolting devices onto the interim picker would be throwaway. The Domain
-  messages (`IneligibilityReason.message`) and discovery are ready to bind. (SPEC §8; Slice 9)
+- iOS UI surfacing (a device list + per-target ineligibility messages in the sidebar/attach flow)
+  is **still deferred**. Slice 11 shipped the sidebar + attach sheet for **attached local streams**
+  only; device rows + ineligibility copy are now targeted at **Slice 12** (which rebuilds the right
+  panel / attach surface). The Domain messages (`IneligibilityReason.message`) and `devices()`
+  discovery are ready to bind. (SPEC §8; Slices 9, 11)
 - The session-report **export trigger** (a "Save report…" `NSSavePanel` + writing the JSON/Markdown
-  bytes to disk) is **not** wired this slice — it is a toolbar/UI action that lands with the
-  design-handoff main window (Slice 11). Slice 10 ships the full Domain assembly + provenance +
-  Markdown and the Data-layer JSON round-trip (`JSONReportSerializer`); the bytes are produced and
-  verified, only the user-facing trigger + file write remain. (SPEC §8; Slice 10)
+  bytes to disk) is **still deferred**. Slice 11 shipped the main-window shell but not the export
+  toolbar action; it is now targeted at **Slice 12** (alongside the detection inbox / diagnostic
+  detail, where a "Copy trace"/"Export" surface fits). Slice 10 ships the full Domain assembly +
+  provenance + Markdown and the Data-layer JSON round-trip (`JSONReportSerializer`); the bytes are
+  produced and verified, only the user-facing trigger + file write remain. (SPEC §8; Slices 10, 11)
+- Slice 11 interim states (all honest, all lifted by slice 12/13): the **right panel is a
+  placeholder** — it keeps live alerts + on-demand energy + the leaks/hitches/zombies deep runs
+  reachable (via the unchanged `DeepDiagnosticsView`) until the provenance-tagged **detection inbox +
+  diagnostic detail** replace it; the timeline draws lanes but has **no detection markers / click-to-
+  inspect** yet; and **only the selected target's stream polls** (background sidebar health reflects
+  the last poll — concurrent "monitor all" is slice 13). Frame time renders as a gated hint lane, not
+  a live counter. (SPEC §8; Slices 11–13)
 - The `SessionReport` metric timeline is **ordered but not time-stamped** — `MetricSample` carries
   no `timestamp` (the Domain is clock-free; SPEC §4 lists one aspirationally). The Markdown summary
   reports counts and peaks, not wall-clock spans; the timestamped `DiagnosticRun`
@@ -152,8 +161,43 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
 | 2026-06-27 | Provenance recorded **at the report level, per source** (not per `MetricSample`); `MetricProvenance.source` is a free-form label, not a Data class name; `ExportReport` derives deep-run provenance from the diagnostics | "Provenance per metric" (SPEC §4/§8) means *which mechanism produced each signal, live vs deep*. The producing source is constant across a session, so tagging every one of up to 3600 samples would bloat the timeline for no gain — a per-signal list on the report is the honest, compact model. `source` is a `String` (e.g. `proc_pid_rusage`, `Leaks`) so the **Domain stays decoupled from Data adapter class names** (the caller that wired the adapters supplies the live labels). `ExportReport` earns its keep by mapping each `DiagnosticResult`→a `.deepRun` `MetricProvenance` (`DiagnosticKind`→`SignalKind` + a SPEC §3.2 mechanism label), so the report is self-describing about its deep runs without the caller re-stating them |
 | 2026-06-27 | JSON serialization lives in a **Data-layer `JSONReportSerializer`** (Foundation); the Domain only declares `Codable` conformance (stdlib) and renders Markdown with a hand-rolled formatter | The Domain has imported **nothing** since slice 0 (not even Foundation — it is clock- and `Date`-free). `Codable`/`Encodable`/`Decodable` are Swift stdlib protocols, so the Domain types conform without a Foundation import; the `JSONEncoder`/`JSONDecoder` round-trip (Foundation) sits behind the Data boundary like every other adapter (SPEC §3.2). The Markdown 1-decimal formatting uses integer arithmetic (`String(format:)` is Foundation), keeping the renderer pure. So the round-trip test is a **Data** test and the assembly/provenance/Markdown tests are **Domain** tests — each in the layer that owns the concern. `markdownSummary` lives on `SessionReport` (a value that describes itself), decomposed into small per-section properties |
 
+| 2026-07-05 | Slice 11 shell: `MainWindowModel` holds one `VitalsModel` **per attached target**; only the *selected* stream polls, via `.task(id: model.selected?.target?.id)` | The handoff says each target streams its own vitals, so a stream (ring buffer + alerts + deep runs) per target is the honest model. Keying the poll `.task` on the selected target's **id** (not `selectedIndex`) fixes the first-attach case (empty→one keeps `selectedIndex == 0`, so an index-keyed task wouldn't restart). Background targets don't poll this slice (their sidebar health reflects the last poll) — concurrent "monitor all" is a slice-13 concern (`Pause all`/`Resume all`). Selecting a row swaps the streamed target (the slice's tested behavior) |
+| 2026-07-05 | Pause gates `poll()` and **drops the baseline**; `range`/`visibleSamples` trim the ring-buffer view, both on `VitalsModel` (per-stream), not the shell | Pause/range are per-timeline controls over one stream, so they live with the thing that owns `samples`. A paused `poll()` early-returns (freezes sampling — matches the handoff's "pause the stream" + its own note to pause when not frontmost); clearing `previousReading` on pause makes the first post-resume tick rebaseline instead of deriving a bogus delta across the paused gap (both TDD'd). `visibleSamples = samples.suffix(range.sampleCount)` keeps the full ring buffer while trimming what the timeline draws (SPEC §4/§8) |
+| 2026-07-05 | Lane/health/range vocab (`LaneKind`, `TargetHealth`, `TimelineRange`) are **pure `nonisolated` enums** carrying **hex** color tokens; SwiftUI `Color` mapping lives in `LatchColors` | The App target is `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so a plain enum becomes main-actor-isolated and its pure methods can't be called from a non-`@MainActor` test. Marking these value types `nonisolated` is the correct design (pure, Sendable, usable from any isolation) and lets the binding tests (`value(from:)`, `TargetHealth.from(alerts:)`) run off the main actor. Colors are hex `String` on the enums (testable without SwiftUI); `LatchColors` maps hex→`Color` and names the surface/status tokens at the SwiftUI boundary |
+| 2026-07-05 | **Frame lane gated** (`isLive == false`, no value, "—" / "deep run"); **no live zombie lane**; Energy live lane = watts **estimate** — the §8 honest reconciliation, enforced in `LaneKind` | SPEC §1/§8 binding: frame time is not a cheap live counter for an external attach (it's a sampling hint + Time Profiler deep run, slice 8), so the lane advertises itself as deep-run-only rather than faking a number; zombies are relaunch-only (no live stream); the energy lane is the always-available `ri_energy_nj` watts estimate (measured `powermetrics` stays an on-demand upgrade). The four cheap signals are the only genuine live lanes |
+| 2026-07-05 | The redesign is landed **incrementally**: `ContentView`/`VitalsView` retired (superseded by `MainWindowView` + `TimelineView` + `DetectionsPanelView`); their reusable parts extracted first (`ThresholdSettingsView`, the energy panel into the right panel, adapter wiring into `VitalsModel.live(for:)`) | Two-hats: extract-then-delete keeps every red→green step behavior-preserving and avoids dead code. The **right panel is interim** — it keeps the shipped functionality reachable (live threshold alerts + on-demand energy + the leaks/hitches/zombies deep runs via the unchanged `DeepDiagnosticsView`) and is honestly labelled "the detection inbox arrives in the next update". Slice 12 replaces it with the provenance-tagged inbox + diagnostic detail + timeline detection markers |
+
 ## Changelog
-- 2026-06-27 — **Slice 10 (Session report & export) landed.** Domain gained the export
+- 2026-07-05 — **Slice 11 (Main window shell + live timeline) landed.** Recreated the design-handoff
+  main window in SwiftUI: a custom gradient **toolbar** (Latch mark + latched-target title/status,
+  five live metric chips, `30s/1m/5m` range control, Pause/Resume, settings gear), a **sidebar** of
+  attached targets (app-icon gradient, name/subtitle, health dot + issue badge, dashed
+  `+ Attach process…`), a center **live timeline** (header + five stacked lanes over the per-target
+  ring buffer), and an interim **right panel**. Honest lanes per the §8 reconciliation: CPU, Memory,
+  Network, and the Energy **watts estimate** are genuine live lanes; **Frame time is gated** as a
+  deep-run hint (no live value, "—"); there is **no live zombie lane**. New Presentation vocabulary —
+  pure `nonisolated` `LaneKind` (title/chip/color-hex/scale-hint/`isLive`/`value(from:)`/
+  `formattedValue`), `TimelineRange` (30s/1m/5m → sample counts), `TargetHealth` (pure
+  `from(alerts:)` fold + hex) — plus `MainWindowModel` (per-target `VitalsModel` streams +
+  `select`/`attach`). `VitalsModel` gained `range`/`visibleSamples` and a pause-gated `poll()` that
+  drops the baseline so resume rebaselines cleanly; `target` is now exposed for the sidebar.
+  `MainWindowView` owns the shell, drives the selected stream's ~1 Hz poll loop (`.task` keyed on the
+  selected target id), and hosts the attach sheet (reusing the slice-1 `TargetPickerModel`) + the
+  threshold settings. `ContentView`/`VitalsView` were retired; `ThresholdSettingsView` and the
+  live-adapter wiring (`VitalsModel.live(for:)`) were extracted first. TDD red-first (16 new app
+  tests): `TimelineLaneTests` (live lanes bind to the sample / frame gated as hint / dash when no
+  sample / chips cover the five lanes), `TargetHealthTests` (healthy/warning/critical fold),
+  `VitalsModelTimelineTests` (pause stops appends / resume rebaselines / range trims the visible
+  window / short history shown whole), `MainWindowModelTests` (select swaps stream / nil when empty /
+  out-of-range ignored / attach adds + selects). Refactor on green: Extract Constant (status-dot
+  hex → `LatchTheme` §8 tokens), Extract Function (`VitalsModel.live(for:)`), Move Class
+  (`ThresholdSettingsView`). App tests green (43/43 LatchTests), `swift test` green (97/97 LatchKit),
+  SwiftLint `--strict` clean on all new files, zero compiler/concurrency warnings. No system-tool API
+  was touched (pure presentation over existing adapters), so rule #4 verification was N/A this slice.
+  ⚠️ Deferred to slice 12: the provenance-tagged **detection inbox** + diagnostic detail + timeline
+  **detection markers** (the right panel is interim), **iOS device rows + ineligibility messaging**
+  in the sidebar (Domain gate ready — slice-9 deferral), and the session-report **export trigger**
+  (slice-10 deferral). Concurrent multi-stream polling ("monitor all") is a slice-13 concern. Domain gained the export
   vocabulary: `SamplingMode` (`.livePoll`/`.deepRun` — SPEC §1's two modes), `MetricProvenance`
   (`signal` + free-form `source` label + `mode`), and `SessionReport` (Codable bundle of the
   target, metric timeline, alert log, `DiagnosticResult` summaries with their `.trace` paths, and

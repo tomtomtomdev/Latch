@@ -3,9 +3,9 @@ import AppKit
 import LatchDomain
 
 /// The on-demand **deep run** diagnostics for a latched target — distinct from the live
-/// polling lanes in `VitalsView`. Groups the two deep-run sections: Leaks (attach, no
-/// relaunch) and Zombies (relaunch-only). Each states its provenance and honest constraints
-/// (MallocStackLogging for leak backtraces; relaunch for zombies). (SPEC §1, §8; PLAN slices 6–7)
+/// timeline lanes. Groups the deep-run sections: Leaks (attach, no relaunch), Hitches & Hangs
+/// (sample), and Zombies (relaunch-only). Each states its provenance and honest constraints
+/// (MallocStackLogging for leak backtraces; relaunch for zombies). (SPEC §1, §8; PLAN slices 6–8)
 struct DeepDiagnosticsView: View {
     let model: VitalsModel
 
