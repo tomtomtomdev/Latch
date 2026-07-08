@@ -62,8 +62,6 @@ private struct TargetRow: View {
     let stream: VitalsModel
     let isSelected: Bool
 
-    private var health: TargetHealth { .from(alerts: stream.alerts) }
-    private var issues: Int { stream.alerts.count }
     private var name: String { stream.target?.displayName ?? "Unknown" }
     private var subtitle: String {
         guard let target = stream.target else { return "" }
@@ -105,12 +103,12 @@ private struct TargetRow: View {
 
     private var statusStack: some View {
         HStack(spacing: 6) {
-            Circle().fill(health.color).frame(width: 8, height: 8)
-            if issues > 0 {
-                Text("\(issues)")
+            Circle().fill(stream.health.color).frame(width: 8, height: 8)
+            if stream.issueCount > 0 {
+                Text("\(stream.issueCount)")
                     .font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
                     .frame(minWidth: 16).padding(.horizontal, 2)
-                    .background(health.color, in: RoundedRectangle(cornerRadius: 7))
+                    .background(stream.health.color, in: RoundedRectangle(cornerRadius: 7))
             }
         }
     }
