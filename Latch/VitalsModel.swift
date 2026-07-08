@@ -339,6 +339,48 @@ extension VitalsModel {
     }
 }
 
+// MARK: - Session report export
+
+/// Assembles a shareable `SessionReport` from this stream's current session (SPEC §3.1, §4, §8;
+/// PLAN slice 10). Same-file so it keeps `private` access to the wired sources and the diagnostic
+/// stores; the `NSSavePanel` + file write stays a thin Humble Object in the view. Reuses the pure
+/// Domain `ExportReport`, which derives each diagnostic's deep-run provenance — so this only supplies
+/// the live-poller provenance for the signals the stream actually polls.
+extension VitalsModel {
+    /// The shareable report, or `nil` with no target (nothing to report).
+    func sessionReport() -> SessionReport? {
+        guard let target else { return nil }
+        return ExportReport()(
+            target: target,
+            metrics: samples,
+            alerts: alerts,
+            diagnostics: ranDiagnostics,
+            liveProvenance: liveProvenance
+        )
+    }
+
+    /// The deep diagnostics that ran this session — the quick checks plus any recorded traces —
+    /// for the report's diagnostics section and its derived deep-run provenance. (PLAN slice 10)
+    private var ranDiagnostics: [DiagnosticResult] {
+        [leakReport, zombieReport, hitchReport, traceResult, hitchTraceResult].compactMap { $0 }
+    }
+
+    /// Live-poll provenance for the signals this stream actually polls: CPU, the memory-growth
+    /// hint, and the energy estimate ride every `proc_pid_rusage` tick; network I/O is present only
+    /// when a `nettop` source is wired. Never claims a signal the stream doesn't measure. (SPEC §4, §8)
+    private var liveProvenance: [MetricProvenance] {
+        var entries = [
+            MetricProvenance(signal: .cpuSpike, source: "proc_pid_rusage", mode: .livePoll),
+            MetricProvenance(signal: .memoryLeak, source: "proc_pid_rusage", mode: .livePoll),
+            MetricProvenance(signal: .battery, source: "rusage estimate", mode: .livePoll),
+        ]
+        if networkSource != nil {
+            entries.append(MetricProvenance(signal: .networkIO, source: "nettop", mode: .livePoll))
+        }
+        return entries
+    }
+}
+
 // MARK: - Detection inbox
 
 /// The right-panel inbox feed (SPEC §8; PLAN slice 12). The feed accumulates as `refreshAlerts`

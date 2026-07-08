@@ -9,6 +9,9 @@ import LatchDomain
 @Observable
 final class TargetPickerModel {
     private(set) var targets: [Target] = []
+    /// Connected iOS devices surfaced alongside local processes. Informational for now: on-device
+    /// app enumeration is deferred, so an eligible device is shown but not yet attachable. (SPEC §1)
+    private(set) var devices: [Device] = []
     private(set) var selected: Target?
     private(set) var errorMessage: String?
     var searchText: String = ""
@@ -31,6 +34,13 @@ final class TargetPickerModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+        await loadDevices()
+    }
+
+    /// Load connected iOS devices best-effort: `devicectl` may be absent or fail, and that must
+    /// not blank the process list or masquerade as a process-discovery error. (SPEC §1; PLAN slice 9)
+    private func loadDevices() async {
+        devices = (try? await discovery.devices()) ?? []
     }
 
     func select(_ target: Target) {

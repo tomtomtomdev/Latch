@@ -45,18 +45,20 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
   `"connected"` string must be confirmed in the smoke against a live-connected device. Eligibility
   does **not** gate on connection (it's transient readiness, not an intrinsic verdict), so a wrong
   `"connected"` guess can't mislabel a device as ineligible. (SPEC §7; Slice 9)
-- iOS UI surfacing (a device list + per-target ineligibility messages in the sidebar/attach flow)
-  is **still deferred**. Slices 11–12 shipped the sidebar + attach sheet + detection inbox for
-  **attached local streams** only; device rows + ineligibility copy did **not** land in slice 12
-  (its PLAN line is the inbox/detail/markers, not the sidebar) — retargeted to **Slice 13** or a
-  later iOS-UI pass. The Domain messages (`IneligibilityReason.message`) and `devices()` discovery
-  are ready to bind. (SPEC §8; Slices 9, 11, 12)
-- The session-report **export trigger** (a "Save report…" `NSSavePanel` + writing the JSON/Markdown
-  bytes to disk) is **still deferred**. Slice 12 added a per-detection **Copy trace** (clipboard:
-  `.trace` path or the stack text), but the full `SessionReport` save/export is not wired —
-  retargeted to **Slice 13** or a cleanup pass. Slice 10 ships the full Domain assembly + provenance
-  + Markdown and the Data-layer JSON round-trip (`JSONReportSerializer`); the bytes are produced and
-  verified, only the user-facing trigger + file write remain. (SPEC §8; Slices 10–12)
+- ✅ **iOS device rows + ineligibility copy landed** (2026-07-08 cleanup pass). The attach sheet now
+  has an "iOS devices" section: the picker loads `discovery.devices()` best-effort (a `devicectl`
+  failure never blanks the process list) via a new `CompositeTargetDiscovery` fusing libproc +
+  devicectl, and each device row renders its honest verdict — eligible devices show "on-device app
+  profiling isn't available yet" (no fake attach; on-device enumeration is still deferred, above),
+  ineligible ones show `IneligibilityReason.message` verbatim. Rows are **not selectable** by design.
+  (SPEC §1, §8; Slices 9, 11, 12)
+- ✅ **Session-report export trigger landed** (2026-07-08 cleanup pass). A toolbar export button runs
+  an `NSSavePanel` and writes `<name>.json` (the `JSONReportSerializer` bundle) + `<name>.md`
+  (`SessionReport.markdownSummary`) via the new `ReportExporter`. The assembly seam
+  `VitalsModel.sessionReport()` bundles the timeline + alerts + ran diagnostics + live-poll provenance
+  (CPU/mem/energy always; network when a `nettop` source is wired) and reuses the slice-10 Domain
+  `ExportReport` (which derives each diagnostic's deep-run provenance). Slice 12's per-detection
+  **Copy trace** remains. (SPEC §8; Slices 10–12)
 - Slice 12 **live inbox interaction** (attaching a target, firing real live-hint detections, running
   deep diagnostics into the feed) is validated in the **manual smoke** — the same GUI-session limit as
   prior slices; the feed/mapping/selection/marker logic is fully unit-tested (`DetectionFeedTests`,
@@ -183,6 +185,27 @@ Legend: ⬜ Not started · 🟦 In progress · ✅ Done · ⚠️ Blocked
 | 2026-07-05 | The redesign is landed **incrementally**: `ContentView`/`VitalsView` retired (superseded by `MainWindowView` + `TimelineView` + `DetectionsPanelView`); their reusable parts extracted first (`ThresholdSettingsView`, the energy panel into the right panel, adapter wiring into `VitalsModel.live(for:)`) | Two-hats: extract-then-delete keeps every red→green step behavior-preserving and avoids dead code. The **right panel is interim** — it keeps the shipped functionality reachable (live threshold alerts + on-demand energy + the leaks/hitches/zombies deep runs via the unchanged `DeepDiagnosticsView`) and is honestly labelled "the detection inbox arrives in the next update". Slice 12 replaces it with the provenance-tagged inbox + diagnostic detail + timeline detection markers |
 
 ## Changelog
+- 2026-07-08 — **Cleanup pass: the two deferred UI triggers landed (export + iOS device rows).**
+  Both were UI wiring over already-tested Domain/Data — TDD red→green→refactor, no Domain change.
+  **(1) Session-report export.** New testable seam `VitalsModel.sessionReport()` assembles a
+  `SessionReport` from the live stream (timeline + alerts + ran diagnostics + live-poll provenance:
+  cpuSpike/memoryLeak/battery on every `proc_pid_rusage` tick, networkIO only when a `nettop` source
+  is wired), reusing the slice-10 `ExportReport` (derives each diagnostic's deep-run provenance).
+  New `ReportExporter` (`nonisolated`, pure I/O) writes `<name>.json` (`JSONReportSerializer`) +
+  `<name>.md` (`markdownSummary`) sidecar; a toolbar export button runs the `NSSavePanel` (humble
+  object, write failures → `NSAlert`). **(2) iOS device rows.** New `CompositeTargetDiscovery`
+  (LatchData) fuses libproc processes + devicectl devices behind the one `TargetDiscovery` the
+  picker depends on; `TargetPickerModel` loads `devices()` **best-effort** (a `devicectl` failure
+  leaves the process list intact, never surfaces as the picker's error). The attach sheet gained an
+  "iOS devices" section rendering each device's honest verdict — eligible → "on-device app profiling
+  isn't available yet" (no fake attach; enumeration still deferred), ineligible → `IneligibilityReason.message`;
+  rows non-selectable by design. TDD red-first: `VitalsModelExportTests` (5 — bundles timeline,
+  live-poll provenance set, network-when-wired, ran diagnostics + derived deep provenance, nil
+  without target), `ReportExporterTests` (2 — round-trippable JSON + Markdown sidecar),
+  `TargetPickerModelTests` (+2 — device load, best-effort failure), `CompositeTargetDiscoveryTests`
+  (2 — merges processes/devices). LatchTests green, `swift test` 99/99 green, clean build, zero new
+  compiler/concurrency warnings, launch-smoke clean. (`LatchUITests` automation-mode init timeout is
+  a pre-existing environment issue, unrelated.) Domain untouched → rule #4 N/A. (SPEC §4, §8; Slices 9, 10)
 - 2026-07-08 — **Slice 13 (Menu-bar companion / mini mode) landed.** Added the glanceable
   **menu-bar dropdown** over all attached targets via a native `MenuBarExtra` (`.window` style),
   sharing the one `MainWindowModel` with the main window. New fleet-wide surface on

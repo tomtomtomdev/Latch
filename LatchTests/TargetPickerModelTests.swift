@@ -40,4 +40,34 @@ struct TargetPickerModelTests {
 
         #expect(model.selected == picked)
     }
+
+    private func device(_ name: String, paired: Bool = true, devMode: Bool = true) -> Device {
+        Device(udid: "udid-\(name)", name: name, platform: "iOS",
+               isPaired: paired, developerModeEnabled: devMode, isConnected: true)
+    }
+
+    // load() also pulls connected iOS devices, so the attach sheet can surface them. (PLAN slice 9)
+    @Test func load_populatesDevicesFromDiscovery() async {
+        let model = TargetPickerModel(discovery: FakeTargetDiscovery(
+            targets: [], devicesToReturn: [device("iPhone")]
+        ))
+
+        await model.load()
+
+        #expect(model.devices.map(\.name) == ["iPhone"])
+    }
+
+    // Device discovery is best-effort: a `devicectl` failure (e.g. not installed) leaves the
+    // process list intact and does not surface as the picker's error. (SPEC §1; PLAN slice 9)
+    @Test func load_deviceFailureLeavesProcessesIntact() async {
+        let model = TargetPickerModel(discovery: FakeTargetDiscovery(
+            targets: [target(1, "Safari")], deviceError: FakeTargetDiscovery.Failure.scripted
+        ))
+
+        await model.load()
+
+        #expect(model.targets.map(\.displayName) == ["Safari"])
+        #expect(model.devices.isEmpty)
+        #expect(model.errorMessage == nil)
+    }
 }

@@ -6,6 +6,7 @@ import LatchDomain
 /// Chips and range read/drive the selected stream directly. (SPEC §8; PLAN slice 11)
 struct MainToolbar: View {
     @Bindable var model: VitalsModel
+    var onExport: () -> Void
     var onSettings: () -> Void
 
     var body: some View {
@@ -15,6 +16,7 @@ struct MainToolbar: View {
             chips.frame(maxWidth: .infinity)
             rangeControl
             pauseButton
+            exportButton
             settingsButton
         }
         .padding(.horizontal, 16)
@@ -103,6 +105,18 @@ struct MainToolbar: View {
             ))
         }
         .buttonStyle(.plain)
+    }
+
+    private var exportButton: some View {
+        Button(action: onExport) {
+            Image(systemName: "square.and.arrow.up")
+                .font(.system(size: 15)).foregroundStyle(LatchTheme.textSecondary)
+                .frame(width: 32, height: 30)
+                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(LatchTheme.hairline))
+        }
+        .buttonStyle(.plain)
+        .help("Export session report (JSON + Markdown)")
     }
 
     private var settingsButton: some View {

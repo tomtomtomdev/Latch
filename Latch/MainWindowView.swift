@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 import LatchDomain
 import LatchData
 
@@ -12,12 +14,20 @@ struct MainWindowView: View {
     @State private var showingAttach = false
     @State private var showingSettings = false
 
-    private let discovery = LibprocTargetDiscovery(lister: LibprocProcessLister())
+    /// Local same-UID processes (libproc) fused with connected iOS devices (devicectl), so the
+    /// attach sheet lists both. Device rows are informational until on-device app enumeration
+    /// lands (SPEC §1 — no fake attach). (PLAN slices 1, 9)
+    private let discovery = CompositeTargetDiscovery([
+        LibprocTargetDiscovery(lister: LibprocProcessLister()),
+        DevicectlTargetDiscovery(commandRunner: ProcessCommandRunner()),
+    ])
 
     var body: some View {
         VStack(spacing: 0) {
             if let selected = model.selected {
-                MainToolbar(model: selected) { showingSettings = true }
+                MainToolbar(model: selected, onExport: { exportReport(for: selected) }) {
+                    showingSettings = true
+                }
             }
             HStack(spacing: 0) {
                 SidebarView(model: model) { showingAttach = true }
@@ -54,6 +64,26 @@ struct MainWindowView: View {
                 ThresholdSettingsView(model: selected)
             }
             .frame(width: 380, height: 360)
+        }
+    }
+
+    /// Export the selected stream's session as a JSON bundle + Markdown summary. The report is
+    /// assembled by the tested `VitalsModel.sessionReport()` seam; this humble part just runs the
+    /// `NSSavePanel` and hands the chosen URL to `ReportExporter`. A failed write surfaces in an
+    /// alert rather than silently dropping the report. (SPEC §4, §8; PLAN slice 10)
+    private func exportReport(for stream: VitalsModel) {
+        guard let report = stream.sessionReport() else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "\(report.target.displayName)-session"
+        panel.message = "Exports a JSON bundle plus a Markdown summary sidecar."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try ReportExporter().write(report, to: url)
+        } catch {
+            let alert = NSAlert(error: error)
+            alert.messageText = "Couldn’t export the session report."
+            alert.runModal()
         }
     }
 
