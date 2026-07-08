@@ -21,6 +21,9 @@ Package.resolved
 # Instruments / profiling artifacts
 *.trace
 
+# Distribution artifacts
+*.dmg
+
 # Provisioning / secrets
 *.mobileprovision
 *.provisionprofile
