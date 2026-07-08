@@ -22,7 +22,7 @@ struct MainWindowView: View {
                 SidebarView(model: model) { showingAttach = true }
                 if let selected = model.selected {
                     TimelineView(model: selected).frame(maxWidth: .infinity, maxHeight: .infinity)
-                    DetectionsPanelView(model: selected)
+                    DetectionInboxView(model: selected)
                 } else {
                     emptyState.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }

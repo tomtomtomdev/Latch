@@ -54,6 +54,16 @@ final class VitalsModel {
     /// the first post-resume sample isn't a bogus delta spanning the paused gap. (SPEC §8)
     private(set) var isPaused = false
 
+    /// The right-panel inbox feed: live threshold hints + deep-run findings, newest first, capped.
+    /// (SPEC §8; PLAN slice 12)
+    private var detectionLog = DetectionLog()
+    /// The detection whose diagnostic detail the right panel is showing, or `nil` for the inbox.
+    private(set) var selectedDetectionID: Detection.ID?
+    /// Cumulative count of appended samples (unbounded by the ring cap) — the "clock" that places
+    /// a live hint's timeline marker. The Domain is clock-free, so at 1 Hz this sample index is the
+    /// honest ordinate. (SPEC §4; PLAN slice 12)
+    private var totalSampleCount = 0
+
     var latest: MetricSample? { samples.last }
     /// The trailing samples within the selected `range` — what the timeline actually draws.
     var visibleSamples: [MetricSample] { Array(samples.suffix(range.sampleCount)) }
@@ -180,7 +190,7 @@ final class VitalsModel {
     func checkLeaks() async {
         await runDiagnostic(
             leakChecker, failureLabel: "Leak check",
-            onSuccess: { self.leakReport = $0; self.leakMessage = nil },
+            onSuccess: { self.leakReport = $0; self.leakMessage = nil; self.detectionLog.addDeepRun($0) },
             onFailure: { self.leakReport = nil; self.leakMessage = $0 }
         )
     }
@@ -203,7 +213,7 @@ final class VitalsModel {
     func checkZombies() async {
         await runDiagnostic(
             zombieRunner, failureLabel: "Zombie check",
-            onSuccess: { self.zombieReport = $0; self.zombieMessage = nil },
+            onSuccess: { self.zombieReport = $0; self.zombieMessage = nil; self.detectionLog.addDeepRun($0) },
             onFailure: { self.zombieReport = nil; self.zombieMessage = $0 }
         )
     }
@@ -216,7 +226,7 @@ final class VitalsModel {
     func checkHitches() async {
         await runDiagnostic(
             hitchRunner, failureLabel: "Hitch check",
-            onSuccess: { self.hitchReport = $0; self.hitchMessage = nil },
+            onSuccess: { self.hitchReport = $0; self.hitchMessage = nil; self.detectionLog.addDeepRun($0) },
             onFailure: { self.hitchReport = nil; self.hitchMessage = $0 }
         )
     }
@@ -287,10 +297,48 @@ final class VitalsModel {
         if samples.count > capacity {
             samples.removeFirst(samples.count - capacity)
         }
+        totalSampleCount += 1
         refreshAlerts()
     }
 
     private func refreshAlerts() {
         alerts = evaluateThresholds(samples: samples, thresholds: thresholds)
+        detectionLog.syncAlerts(alerts, sampleTick: totalSampleCount)
+    }
+}
+
+// MARK: - Detection inbox
+
+/// The right-panel inbox feed (SPEC §8; PLAN slice 12). The feed accumulates as `refreshAlerts`
+/// and the deep-run checks push into `detectionLog`; this extension is the read/select surface the
+/// inbox, detail, and timeline markers bind to. Same-file so it keeps `private` access to the log
+/// and the sample "clock" while staying its own cohesive concern.
+extension VitalsModel {
+    /// The inbox feed (newest first).
+    var detections: [Detection] { detectionLog.detections }
+
+    /// The selected detection's detail, or `nil` when the inbox is showing.
+    var selectedDetection: Detection? { detections.first { $0.id == selectedDetectionID } }
+
+    /// Open a detection's diagnostic detail (from an inbox card or a timeline marker).
+    func selectDetection(_ id: Detection.ID) {
+        selectedDetectionID = id
+    }
+
+    /// Return from a diagnostic detail to the inbox.
+    func clearSelectedDetection() {
+        selectedDetectionID = nil
+    }
+
+    /// Horizontal position (0…1) of a detection's marker within the visible window, or `nil` when
+    /// it has no tick (a deep run — inbox-only) or has scrolled out of the window.
+    func markerFraction(for detection: Detection) -> Double? {
+        guard let tick = detection.sampleTick else { return nil }
+        let visible = visibleSamples.count
+        guard visible > 0 else { return nil }
+        let firstVisibleTick = totalSampleCount - visible + 1
+        guard tick >= firstVisibleTick, tick <= totalSampleCount else { return nil }
+        guard visible > 1 else { return 1 }
+        return Double(tick - firstVisibleTick) / Double(visible - 1)
     }
 }

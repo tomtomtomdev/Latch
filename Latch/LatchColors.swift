@@ -25,6 +25,10 @@ extension TargetHealth {
     var color: Color { Color(hex: colorHex) }
 }
 
+extension DetectionSeverity {
+    var color: Color { Color(hex: colorHex) }
+}
+
 /// Surface, accent, and text tokens from the handoff. Grouped so the views read
 /// `LatchTheme.window` etc. rather than sprinkling hex literals. (SPEC §8 Design Tokens)
 enum LatchTheme {
