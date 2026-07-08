@@ -33,3 +33,30 @@ final class MainWindowModel {
         selectedIndex = streams.count - 1
     }
 }
+
+// MARK: - Menu-bar companion (fleet-wide glance)
+
+/// The menu-bar dropdown (SPEC §8; PLAN slice 13) reads the whole fleet at once: a header count,
+/// the recent detections across every attached target, and `Pause all` / `Resume all`. These are
+/// pure folds over `streams`, so the companion binds to them without any `NSStatusItem` in tests.
+extension MainWindowModel {
+    /// Header line, e.g. `Monitoring 2 targets`.
+    var monitoringSummary: String {
+        "Monitoring \(streams.count) target\(streams.count == 1 ? "" : "s")"
+    }
+
+    /// Whether every attached stream is frozen — drives the `Pause all` / `Resume all` emphasis.
+    /// An empty fleet is not "all paused": there is nothing to pause.
+    var allPaused: Bool { !streams.isEmpty && streams.allSatisfy(\.isPaused) }
+
+    /// The recent detections across all targets, newest-first within each and capped at three —
+    /// a glance, not the full inbox. Cross-target ordering falls back to attach order (the Domain
+    /// has no wall clock to interleave feeds by; documented in PROGRESS). (SPEC §8)
+    var recentDetections: [Detection] { Array(streams.flatMap(\.detections).prefix(3)) }
+
+    /// Freeze every attached stream's poller.
+    func pauseAll() { streams.forEach { $0.setPaused(true) } }
+
+    /// Resume every attached stream's poller.
+    func resumeAll() { streams.forEach { $0.setPaused(false) } }
+}

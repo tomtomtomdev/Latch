@@ -7,7 +7,8 @@ import LatchData
 /// the ~1 Hz poll loop for the selected stream, and hosts the attach + settings surfaces. The
 /// detection inbox (slice 12) and menu-bar companion (slice 13) build on this. (PLAN slice 11)
 struct MainWindowView: View {
-    @State private var model = MainWindowModel()
+    /// Injected by `LatchApp` so the menu-bar companion shares the same fleet. (PLAN slice 13)
+    let model: MainWindowModel
     @State private var showingAttach = false
     @State private var showingSettings = false
 
@@ -31,7 +32,7 @@ struct MainWindowView: View {
         .frame(minWidth: 1040, minHeight: 640)
         .background(LatchTheme.window)
         .preferredColorScheme(.dark)
-        .task(id: model.selected?.target?.id) { await pollSelected() }
+        .task(id: model.streams.count) { await pollFleet() }
         .sheet(isPresented: $showingAttach) {
             AttachSheet(picker: TargetPickerModel(discovery: discovery)) { target in
                 model.attach(.live(for: target))
@@ -68,12 +69,12 @@ struct MainWindowView: View {
         .background(LatchTheme.center)
     }
 
-    /// Poll the selected stream at ~1 Hz. Re-runs whenever the selected target changes (the
-    /// `.task(id:)` above keys on its id), so switching targets streams the newly-selected one.
-    private func pollSelected() async {
-        guard let stream = model.selected else { return }
+    /// Poll every attached stream at ~1 Hz. Re-runs whenever a target is attached (the `.task(id:)`
+    /// above keys on the stream count), so the menu-bar companion glances at live health across the
+    /// whole fleet — not just the selected target. A paused stream's `poll()` is a no-op. (SPEC §8)
+    private func pollFleet() async {
         while !Task.isCancelled {
-            await stream.poll()
+            for stream in model.streams { await stream.poll() }
             try? await Task.sleep(for: .seconds(1))
         }
     }

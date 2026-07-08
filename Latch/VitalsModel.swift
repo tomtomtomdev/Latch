@@ -307,6 +307,38 @@ final class VitalsModel {
     }
 }
 
+// MARK: - At-a-glance summary
+
+/// The compact readouts the sidebar dot and the menu-bar companion row bind to: overall health,
+/// how many signals are firing, and a one-line vitals summary. Pure folds over the current alert
+/// set and the latest sample — no new state. (SPEC §8; PLAN slices 11, 13)
+extension VitalsModel {
+    /// Overall health, folded from the active live alerts (critical dominates). (PLAN slice 11)
+    var health: TargetHealth { TargetHealth.from(alerts: alerts) }
+
+    /// How many signals are currently firing.
+    var issueCount: Int { alerts.count }
+
+    /// The health/issue label in the companion row, e.g. `Healthy` / `1 issue` / `3 issues`.
+    var statusSummary: String {
+        switch issueCount {
+        case 0: "Healthy"
+        case 1: "1 issue"
+        default: "\(issueCount) issues"
+        }
+    }
+
+    /// The compact vitals line, e.g. `CPU 61% · 540 MB · 12.0 MB/s`, or `—` before the first
+    /// sample — an honest placeholder, never a fabricated zero. (SPEC §8)
+    var vitalsLine: String {
+        guard let sample = latest else { return "—" }
+        return String(
+            format: "CPU %.0f%% · %.0f MB · %.1f MB/s",
+            sample.cpuPercent, sample.physFootprintMegabytes, sample.networkMegabytesPerSecond
+        )
+    }
+}
+
 // MARK: - Detection inbox
 
 /// The right-panel inbox feed (SPEC §8; PLAN slice 12). The feed accumulates as `refreshAlerts`
