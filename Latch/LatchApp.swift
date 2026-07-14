@@ -13,6 +13,11 @@ struct LatchApp: App {
             MainWindowView(model: model)
         }
         .windowStyle(.hiddenTitleBar)
+        // Force the main window to present on launch. With a `MenuBarExtra` also in the scene,
+        // SwiftUI can otherwise start the app with only the menu-bar item showing and the main
+        // window created but never ordered on-screen — the app looks unresponsive on first open
+        // because there is nothing to interact with. (macOS 15+)
+        .defaultLaunchBehavior(.presented)
 
         MenuBarExtra("Latch", systemImage: "link") {
             MenuBarView(model: model, onOpenLatch: openLatch)

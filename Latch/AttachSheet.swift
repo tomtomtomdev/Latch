@@ -36,22 +36,39 @@ struct AttachSheet: View {
             ContentUnavailableView("Discovery failed", systemImage: "exclamationmark.triangle",
                                    description: Text(message))
         } else {
-            List {
-                Section("Processes") {
-                    ForEach(picker.filteredTargets) { target in
-                        processRow(target)
+            VStack(spacing: 0) {
+                filterField
+                Divider()
+                List {
+                    Section("Processes") {
+                        ForEach(picker.filteredTargets) { target in
+                            processRow(target)
+                        }
                     }
-                }
-                if !picker.devices.isEmpty {
-                    Section("iOS devices") {
-                        ForEach(picker.devices) { device in
-                            DeviceRow(device: device)
+                    if !picker.devices.isEmpty {
+                        Section("iOS devices") {
+                            ForEach(picker.devices) { device in
+                                DeviceRow(device: device)
+                            }
                         }
                     }
                 }
             }
-            .searchable(text: $picker.searchText, prompt: "Filter processes")
         }
+    }
+
+    /// A plain filter field rather than `.searchable`: on macOS `.searchable` bare on a `List`
+    /// in a fixed-frame sheet (no navigation container) drives an unbounded "Update Constraints
+    /// in Window" loop that crashes with `NSGenericException`. A `TextField` filters the same
+    /// `picker.searchText` without that layout feedback.
+    private var filterField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Filter processes", text: $picker.searchText)
+                .textFieldStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     private func processRow(_ target: Target) -> some View {

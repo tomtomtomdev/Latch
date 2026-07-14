@@ -11,8 +11,17 @@ import LatchData
 struct MainWindowView: View {
     /// Injected by `LatchApp` so the menu-bar companion shares the same fleet. (PLAN slice 13)
     let model: MainWindowModel
-    @State private var showingAttach = false
-    @State private var showingSettings = false
+    @State private var activeSheet: ActiveSheet?
+
+    /// The one modal the window can show. A single `.sheet(item:)` drives both surfaces:
+    /// stacking two `.sheet(isPresented:)` modifiers on one view made SwiftUI observe the pair
+    /// of bindings as a `Pair<Bool, Bool>` and re-run its onChange "multiple times per frame"
+    /// during presentation. One enum, one sheet removes that churn.
+    private enum ActiveSheet: Identifiable {
+        case attach
+        case settings
+        var id: Self { self }
+    }
 
     /// Local same-UID processes (libproc) fused with connected iOS devices (devicectl), so the
     /// attach sheet lists both. Device rows are informational until on-device app enumeration
@@ -26,11 +35,11 @@ struct MainWindowView: View {
         VStack(spacing: 0) {
             if let selected = model.selected {
                 MainToolbar(model: selected, onExport: { exportReport(for: selected) }) {
-                    showingSettings = true
+                    activeSheet = .settings
                 }
             }
             HStack(spacing: 0) {
-                SidebarView(model: model) { showingAttach = true }
+                SidebarView(model: model) { activeSheet = .attach }
                 if let selected = model.selected {
                     TimelineView(model: selected).frame(maxWidth: .infinity, maxHeight: .infinity)
                     DetectionInboxView(model: selected)
@@ -43,12 +52,16 @@ struct MainWindowView: View {
         .background(LatchTheme.window)
         .preferredColorScheme(.dark)
         .task(id: model.streams.count) { await pollFleet() }
-        .sheet(isPresented: $showingAttach) {
-            AttachSheet(picker: TargetPickerModel(discovery: discovery)) { target in
-                model.attach(.live(for: target))
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .attach:
+                AttachSheet(picker: TargetPickerModel(discovery: discovery)) { target in
+                    model.attach(.live(for: target))
+                }
+            case .settings:
+                settingsSheet
             }
         }
-        .sheet(isPresented: $showingSettings) { settingsSheet }
     }
 
     @ViewBuilder private var settingsSheet: some View {
@@ -57,7 +70,7 @@ struct MainWindowView: View {
                 HStack {
                     Text("Thresholds — \(selected.target?.displayName ?? "")").font(.headline)
                     Spacer()
-                    Button("Done") { showingSettings = false }
+                    Button("Done") { activeSheet = nil }
                 }
                 .padding()
                 Divider()
@@ -93,7 +106,7 @@ struct MainWindowView: View {
         } description: {
             Text("Attach a same-UID process to stream its live vitals.")
         } actions: {
-            Button("Attach process…") { showingAttach = true }
+            Button("Attach process…") { activeSheet = .attach }
                 .buttonStyle(.borderedProminent)
         }
         .background(LatchTheme.center)
